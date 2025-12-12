@@ -469,6 +469,15 @@ def main():
         except Exception as e:
             print(f"  Transparent render failed for {cam.name}: {e}")
 
+    # Save Blend File
+    blend_file_path = os.path.join(output_dir, f"{stl_basename}.blend")
+    print(f"Saving blend file to: {blend_file_path}")
+    try:
+        bpy.ops.wm.save_as_mainfile(filepath=blend_file_path)
+        print("Blend file saved successfully.")
+    except Exception as e:
+        print(f"Failed to save blend file: {e}")
+
     print("Done.")
 
 if __name__ == "__main__":
