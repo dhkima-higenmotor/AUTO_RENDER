@@ -33,7 +33,7 @@ def run_step(description, cmd, check_path=None):
 def main():
     parser = argparse.ArgumentParser(description="Auto Render TUI Pipeline")
     parser.add_argument("input_file", help="Path to SolidWorks Assembly (.SLDASM)")
-    parser.add_argument("--res", default="1024x768", help="Resolution in WxH format (default: 1024x768)")
+    parser.add_argument("--res", default="800x600", help="Resolution in WxH format (default: 800x600)")
     
     args = parser.parse_args()
     

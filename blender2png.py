@@ -17,11 +17,13 @@ def run_render(blend_file, resolution):
         print(f"Error: File not found: {blend_file}")
         return
 
-    try:
-        width, height = map(int, resolution.lower().split('x'))
-    except ValueError:
-        print("Error: Resolution must be in format WxH (e.g., 1024x768)")
-        return
+    width, height = None, None
+    if resolution:
+        try:
+            width, height = map(int, resolution.lower().split('x'))
+        except ValueError:
+            print("Error: Resolution must be in format WxH (e.g., 800x600)")
+            return
 
     # Read Blender Exe Path
     blender_exe = "blender" # default
@@ -32,25 +34,80 @@ def run_render(blend_file, resolution):
     
     print("-" * 40)
     print(f"Starting Render: {os.path.basename(blend_file)}")
-    print(f"Resolution: {width} x {height}")
+    if width and height:
+        print(f"Resolution Override: {width} x {height}")
+    else:
+        print("Resolution: Keep blend file settings")
 
     # Create a temporary python script for Blender
     temp_script_path = os.path.join(os.path.dirname(blend_file), "_temp_render_script.py")
     temp_script_path = os.path.normpath(temp_script_path)
     
+    res_setup_str = ""
+    if width is not None and height is not None:
+        res_setup_str = f"""
+# Set Resolution
+bpy.context.scene.render.resolution_x = {width}
+bpy.context.scene.render.resolution_y = {height}
+bpy.context.scene.render.resolution_percentage = 200
+"""
+
     script_content = f"""
 import bpy
 import os
 import sys
 
-# Set Resolution
-bpy.context.scene.render.resolution_x = {width}
-bpy.context.scene.render.resolution_y = {height}
-bpy.context.scene.render.resolution_percentage = 100
+{res_setup_str}
 
-# Set Transparent Background
+# Set Transparent Background (RGBA)
 bpy.context.scene.render.film_transparent = True
+bpy.context.scene.render.image_settings.file_format = 'PNG'
 bpy.context.scene.render.image_settings.color_mode = 'RGBA'
+
+# Configure World Background to White Light
+world = bpy.context.scene.world
+if not world:
+    world = bpy.data.worlds.new("World_White")
+    bpy.context.scene.world = world
+if hasattr(world, 'use_nodes') and not world.use_nodes:
+    try:
+        world.use_nodes = True
+    except:
+        pass
+bg_node = world.node_tree.nodes.get("Background")
+if bg_node:
+    bg_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+    bg_node.inputs['Strength'].default_value = 1.0
+
+# Ensure Cycles engine and GPU device are set for rendering
+bpy.context.scene.render.engine = 'CYCLES'
+bpy.context.scene.cycles.device = 'GPU'
+
+# Set Sampling (Viewport: 64, Render: 512, Denoise: On)
+bpy.context.scene.cycles.preview_samples = 64
+bpy.context.scene.cycles.samples = 512
+bpy.context.scene.cycles.use_denoising = True
+
+try:
+    cycles_pref = bpy.context.preferences.addons['cycles'].preferences
+    for dev_type in ('OPTIX', 'CUDA', 'HIP', 'ONEAPI'):
+        try:
+            cycles_pref.compute_device_type = dev_type
+            cycles_pref.get_devices()
+            has_gpu = False
+            for dev in cycles_pref.devices:
+                if dev.type != 'CPU':
+                    dev.use = True
+                    has_gpu = True
+                else:
+                    dev.use = False
+            if has_gpu:
+                print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
+                break
+        except Exception:
+            pass
+except Exception as e:
+    print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 
 base_path = bpy.data.filepath
 base_dir = os.path.dirname(base_path)
@@ -133,7 +190,7 @@ else:
 def main():
     parser = argparse.ArgumentParser(description="Render Blender file to PNG")
     parser.add_argument("blend_file", help="Path to .blend file")
-    parser.add_argument("--res", default="1024x768", help="Resolution in WxH format (default: 1024x768)")
+    parser.add_argument("--res", default=None, help="Resolution in WxH format (e.g., 800x600). If omitted, keeps blend file resolution.")
     
     if len(sys.argv) == 1:
         parser.print_help()

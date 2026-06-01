@@ -10,12 +10,12 @@ class AutoRenderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Auto Render GUI")
-        self.root.geometry("600x500")
+        self.root.geometry("800x500")
         
         # Variables
         self.selected_file_path = tk.StringVar()
         self.selected_file_path.set("No file selected")
-        self.resolution_var = tk.StringVar(value="1024x768")
+        self.resolution_var = tk.StringVar(value="800x600")
         self.log_queue = queue.Queue()
         
         # UI Setup
@@ -45,11 +45,11 @@ class AutoRenderApp:
         self.btn_blend = tk.Button(frame_actions, text="Make BLEND", command=self.run_make_blend, width=15, height=2, state="disabled")
         self.btn_blend.pack(side="left", padx=5)
         
-        # Render UI
-        tk.Label(frame_actions, text="Res:").pack(side="left", padx=(10, 2))
-        tk.Entry(frame_actions, textvariable=self.resolution_var, width=10).pack(side="left")
+        self.btn_open = tk.Button(frame_actions, text="Open BLEND", command=self.run_open_blend, width=15, height=2, state="disabled")
+        self.btn_open.pack(side="left", padx=5)
         
-        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=2, state="disabled", bg="#dddddd")
+        # Render UI
+        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=2, state="normal", bg="#dddddd")
         self.btn_render.pack(side="left", padx=5)
         
         btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=2, fg="red")
@@ -200,27 +200,32 @@ class AutoRenderApp:
         threading.Thread(target=task, daemon=True).start()
 
     def run_render(self):
-        file_path = self.selected_file_path.get()
-        # Derive blend file path
-        # Logic: [Path]/[Name].SLDASM -> [Path]/[Name]__BLENDER/[Name].blend
-        base_path_no_ext = os.path.splitext(file_path)[0]
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
-        blend_dir = base_path_no_ext + "__BLENDER"
-        blend_file = os.path.join(blend_dir, f"{base_name}.blend")
+        # 1. Open File Dialog to choose a .blend file
+        initial_dir = os.path.dirname(os.path.abspath(__file__))
+        sldasm_path = self.selected_file_path.get()
+        if sldasm_path and sldasm_path != "No file selected" and os.path.exists(sldasm_path):
+            suggested_dir = os.path.splitext(sldasm_path)[0] + "__BLENDER"
+            if os.path.isdir(suggested_dir):
+                initial_dir = suggested_dir
+            else:
+                initial_dir = os.path.dirname(sldasm_path)
+
+        blend_file = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            title="Select Blender File to Render",
+            filetypes=[("Blender File", "*.blend"), ("All Files", "*.*")]
+        )
         
-        if not os.path.exists(blend_file):
-             messagebox.showerror("Error", f"Blend file not found:\n{blend_file}\nPlease run 'Make BLEND' first.")
-             return
+        if not blend_file:
+            return # User cancelled
              
-        res = self.resolution_var.get()
-        
         self.btn_render.config(state="disabled")
         self.log("-" * 40)
         self.log(f"Starting Render: {os.path.basename(blend_file)}")
-        self.log(f"Resolution: {res}")
+        self.log("Resolution: Keep blend file settings")
         
-        # Call blender2png.py as CLI
-        cmd = [sys.executable, "blender2png.py", blend_file, "--res", res]
+        # Call blender2png.py as CLI without --res override to keep blend settings
+        cmd = [sys.executable, "blender2png.py", blend_file]
         
         def task():
             self.run_command(cmd)
@@ -228,8 +233,52 @@ class AutoRenderApp:
 
         threading.Thread(target=task, daemon=True).start()
 
+    def run_open_blend(self):
+        file_path = self.selected_file_path.get()
+        blend_file = None
+        if file_path and file_path != "No file selected":
+            base_path_no_ext = os.path.splitext(file_path)[0]
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            blend_dir = base_path_no_ext + "__BLENDER"
+            blend_file = os.path.join(blend_dir, f"{base_name}.blend")
+            
+        if not blend_file or not os.path.exists(blend_file):
+            initial_dir = os.path.dirname(os.path.abspath(__file__))
+            if file_path and file_path != "No file selected" and os.path.exists(file_path):
+                initial_dir = os.path.dirname(file_path)
+            
+            blend_file = filedialog.askopenfilename(
+                initialdir=initial_dir,
+                title="Select Blender File to Open",
+                filetypes=[("Blender File", "*.blend"), ("All Files", "*.*")]
+            )
+            
+        if not blend_file or not os.path.exists(blend_file):
+            return # No file selected or found
+            
+        # Read Blender Path
+        blender_exe = "blender"
+        if os.path.exists("blender_exe.txt"):
+            with open("blender_exe.txt", "r") as f:
+                content = f.read().strip()
+                if content: blender_exe = content
+                
+        self.log("-" * 40)
+        self.log(f"Launching Blender GUI with: {os.path.basename(blend_file)}")
+        
+        try:
+            # Launch Blender GUI asynchronously without blocking the Tkinter event loop
+            import subprocess
+            if os.name == 'nt':
+                # Detach on Windows using CREATE_NEW_CONSOLE
+                subprocess.Popen([blender_exe, blend_file], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([blender_exe, blend_file])
+            self.log("Blender GUI launched successfully.")
+        except Exception as e:
+            self.log(f"Error launching Blender: {e}", is_error=True)
+
     def check_blend_file(self):
-        # Helper to enable Render button if blend file exists
         file_path = self.selected_file_path.get()
         if not file_path or file_path == "No file selected": return
         
@@ -239,10 +288,10 @@ class AutoRenderApp:
         blend_file = os.path.join(blend_dir, f"{base_name}.blend")
         
         if os.path.exists(blend_file):
-            self.btn_render.config(state="normal")
-            self.log("Found existing Blend file. Render enabled.")
+            self.log(f"Suggested Blend file found: {os.path.basename(blend_file)}")
+            self.btn_open.config(state="normal")
         else:
-            self.btn_render.config(state="disabled")
+            self.btn_open.config(state="disabled")
 
 if __name__ == "__main__":
     root = tk.Tk()
