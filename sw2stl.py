@@ -14,11 +14,6 @@ def get_material_properties(component, swApp):
     # Debug prefix
     comp_name = component.Name2
     # print(f"DEBUG: Checking component: {comp_name}")
-    
-    # 0. Check Suppression State (Force Resolve if NOT Fully Resolved)
-    # swComponentSuppressed = 0
-    # swComponentLightweight = 1
-    # swComponentFullyResolved = 2
     try:
         # GetSuppression might be exposed as property or method depending on Dispatch
         val = component.GetSuppression
@@ -27,27 +22,25 @@ def get_material_properties(component, swApp):
         else:
             suppression = val
             
-        # print(f"  > State: {suppression}")
-        
-        if suppression != 2:
-            # print(f"  > Component is NOT Resolved (State {suppression}). Attempting Resolve...")
+        # swComponentSuppressed = 0
+        # swComponentLightweight = 1
+        # swComponentFullyResolved = 2
+        # swComponentResolved = 3
+        # swComponentFullyLightweight = 4
+        if suppression in (1, 4): # Only resolve if lightweight (1 or 4)
             res = component.SetSuppression2(2) # 2 = Resolve
-            # print(f"    > Resolve Result: {res} (2=Resolved, 0=Failed?)")
             
             # Re-check
             val = component.GetSuppression
             if callable(val): new_suppression = val()
             else: new_suppression = val
-            # print(f"    > New State: {new_suppression}")
             
         # Check Path
         val = component.GetPathName
         if callable(val): path = val()
         else: path = val
-        # print(f"  > Path: {path}")
         
     except Exception as e:
-         # print(f"  > Failed to check/set suppression: {e}")
          pass
     
     # 1. Component Level Override (Direct checks)
@@ -162,6 +155,19 @@ def traverse_and_save_materials(component, output_dir, assembly_name, swApp):
     For each part (leaf node), generates a JSON file with material properties.
     Filename: "{assembly_name} - {component.Name2}.json"
     """
+    # Skip suppressed components
+    try:
+        val = component.GetSuppression
+        if callable(val):
+            suppression = val()
+        else:
+            suppression = val
+            
+        if suppression == 0: # swComponentSuppressed
+            return
+    except:
+        pass
+
     # Get Children
     children = component.GetChildren
     if callable(children):
@@ -269,21 +275,73 @@ def main():
     # 2. Open the file
     print(f"Opening {file_path}...")
     
+    # Check configurations before opening
+    selected_config = ""
+    try:
+        configs = swApp.GetConfigurationNames(file_path)
+        if configs and len(configs) > 1:
+            print(f"Multiple configurations found: {configs}")
+            import tkinter as tk
+            
+            def choose_config_dialog(config_names):
+                selected = [config_names[0]]
+                root = tk.Tk()
+                root.title("Select Configuration")
+                root.geometry("350x250")
+                root.attributes("-topmost", True)
+                
+                # Center on screen
+                root.update_idletasks()
+                width = root.winfo_width()
+                height = root.winfo_height()
+                x = (root.winfo_screenwidth() // 2) - (width // 2)
+                y = (root.winfo_screenheight() // 2) - (height // 2)
+                root.geometry(f'{width}x{height}+{x}+{y}')
+                
+                lbl = tk.Label(root, text="Select SolidWorks Configuration:", font=("Arial", 10, "bold"), pady=10)
+                lbl.pack()
+                
+                frame = tk.Frame(root)
+                frame.pack(fill="x", padx=20, pady=5)
+                
+                scroll = tk.Scrollbar(frame, orient="vertical")
+                listb = tk.Listbox(frame, yscrollcommand=scroll.set, font=("Arial", 10), height=6)
+                scroll.config(command=listb.yview)
+                scroll.pack(side="right", fill="y")
+                listb.pack(side="left", fill="both", expand=True)
+                
+                for c in config_names:
+                    listb.insert(tk.END, c)
+                listb.select_set(0)
+                
+                def on_ok():
+                    sel = listb.curselection()
+                    if sel:
+                        selected[0] = config_names[sel[0]]
+                    root.destroy()
+                    
+                btn = tk.Button(root, text="OK", command=on_ok, width=10, height=2, bg="#dddddd")
+                btn.pack(pady=10)
+                
+                root.protocol("WM_DELETE_WINDOW", on_ok)
+                root.mainloop()
+                return selected[0]
+                
+            selected_config = choose_config_dialog(list(configs))
+            print(f"Opening with configuration: {selected_config}")
+    except Exception as e:
+        print(f"Error querying configurations: {e}")
+
     # OpenDoc6(FileName, Type, Options, Configuration, &Errors, &Warnings)
     # Type: 2 for Assembly (swDocASSEMBLY)
     # Options: 1 (swOpenDocOptions_Silent)
     # Try to open the file
-    # OpenDoc6(FileName, Type, Options, Configuration, &Errors, &Warnings)
     model = None
     try:
         # Try correct OpenDoc6 call for Dynamic Dispatch (requires explicit ByRef VARIANTs)
-        # Note: If EnsureDispatch worked, standard python args might work or return tuple.
-        # But if we are here (likely dynamic), we need VARIANTs for the last two args if we passed 6 args.
-        # Strategy: Try calling with just 4 args (Pythonic), if that fails, try with VARIANTs (raw COM).
-        
         try:
              # First attempt: Pythonic (works for Early Binding usually)
-             result = swApp.OpenDoc6(file_path, 2, 1, "")
+             result = swApp.OpenDoc6(file_path, 2, 1, selected_config)
              if isinstance(result, tuple):
                  model = result[0]
              else:
@@ -293,7 +351,7 @@ def main():
              # Silently try the fallback
              arg_err = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
              arg_warn = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
-             model = swApp.OpenDoc6(file_path, 2, 1, "", arg_err, arg_warn)
+             model = swApp.OpenDoc6(file_path, 2, 1, selected_config, arg_err, arg_warn)
              
     except Exception:
         # Final fallback to legacy OpenDoc
@@ -319,7 +377,22 @@ def main():
         except Exception as e:
             print(f"Warning: ActivateDoc3 failed ({e}), but proceeding since OpenDoc succeeded.")
 
-
+    # Explicitly switch configuration if a specific one was selected (in case file was already open)
+    if selected_config:
+        try:
+            print(f"Activating configuration: {selected_config}")
+            val = model.ShowConfiguration2
+            if callable(val):
+                val(selected_config)
+            else:
+                model.ShowConfiguration2 = selected_config
+            
+            # Rebuild after switching configuration
+            rebuild_val = model.EditRebuild3
+            if callable(rebuild_val):
+                rebuild_val()
+        except Exception as e:
+            print(f"Warning: Failed to show configuration '{selected_config}': {e}")
 
     # 3. Create Output Directory
     # Directory: [original_dir]/[filename]__STL/
@@ -391,7 +464,29 @@ def main():
              
     else:
         print("Export returned False (Failure). Check write permissions or filename.")
-             
+
+    # Close document in SolidWorks
+    if model:
+        try:
+            val = model.GetTitle
+            if callable(val):
+                doc_title = val()
+            else:
+                doc_title = val
+            
+            # Strip any modification asterisk and trailing whitespaces
+            if doc_title and "*" in doc_title:
+                doc_title = doc_title.split("*")[0].strip()
+            
+            print(f"Closing document in SolidWorks (QuitDoc): {doc_title}")
+            swApp.QuitDoc(doc_title)
+            
+            # Secondary fallback with exact filename with extension
+            if doc_title != file_name_with_ext:
+                swApp.QuitDoc(file_name_with_ext)
+        except Exception as e:
+            print(f"Failed to close document in SolidWorks: {e}")
+
     print("Done.")
 
 if __name__ == "__main__":

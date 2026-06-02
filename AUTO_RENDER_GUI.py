@@ -5,16 +5,19 @@ import threading
 import queue
 import os
 import sys
+import shutil
 
 class AutoRenderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Auto Render GUI")
-        self.root.geometry("800x500")
+        self.root.geometry("800x560")
         
         # Variables
         self.selected_file_path = tk.StringVar()
         self.selected_file_path.set("No file selected")
+        self.selected_blend_path = tk.StringVar()
+        self.selected_blend_path.set("No blend file selected")
         self.resolution_var = tk.StringVar(value="800x600")
         self.log_queue = queue.Queue()
         
@@ -34,6 +37,16 @@ class AutoRenderApp:
         
         btn_browse = tk.Button(frame_file, text="Choose SLDASM", command=self.choose_file)
         btn_browse.pack(side="right")
+
+        # 1.5. Blend File Selection Frame
+        frame_blend = tk.LabelFrame(self.root, text="blend File", padx=10, pady=10)
+        frame_blend.pack(fill="x", padx=10, pady=5)
+        
+        lbl_blend = tk.Label(frame_blend, textvariable=self.selected_blend_path, fg="blue", wraplength=550)
+        lbl_blend.pack(side="left", fill="x", expand=True)
+        
+        btn_browse_blend = tk.Button(frame_blend, text="Choose BLEND", command=self.choose_blend_file)
+        btn_browse_blend.pack(side="right")
         
         # 2. Action Buttons Frame
         frame_actions = tk.Frame(self.root, padx=10, pady=10)
@@ -49,7 +62,7 @@ class AutoRenderApp:
         self.btn_open.pack(side="left", padx=5)
         
         # Render UI
-        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=2, state="normal", bg="#dddddd")
+        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=2, state="disabled", bg="#dddddd")
         self.btn_render.pack(side="left", padx=5)
         
         btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=2, fg="red")
@@ -99,6 +112,26 @@ class AutoRenderApp:
                 self.btn_blend.config(state="disabled")
                 
             self.check_blend_file()
+
+    def choose_blend_file(self):
+        initial_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = self.selected_file_path.get()
+        if file_path and file_path != "No file selected" and os.path.exists(file_path):
+            suggested_dir = os.path.splitext(file_path)[0] + "__BLENDER"
+            if os.path.isdir(suggested_dir):
+                initial_dir = suggested_dir
+            else:
+                initial_dir = os.path.dirname(file_path)
+                
+        blend_file = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            title="Select Blender File",
+            filetypes=[("Blender File", "*.blend"), ("All Files", "*.*")]
+        )
+        if blend_file:
+            self.selected_blend_path.set(blend_file)
+            self.btn_open.config(state="normal")
+            self.btn_render.config(state="normal")
 
     def run_command(self, cmd):
         """Runs a subprocess and streams output to log."""
@@ -193,31 +226,28 @@ class AutoRenderApp:
         cmd = [sys.executable, "stl2blender.py", stl_dir]
         
         def task():
-            self.run_command(cmd)
+            ret = self.run_command(cmd)
             self.root.after(0, lambda: self.btn_blend.config(state="normal"))
             self.root.after(0, lambda: self.check_blend_file())
+            if ret == 0:
+                self.log(f"Blender conversion successful. Deleting STL directory: {stl_dir}")
+                try:
+                    shutil.rmtree(stl_dir)
+                    self.log("Successfully deleted STL directory.")
+                except Exception as e:
+                    self.log(f"Failed to delete STL directory: {e}", is_error=True)
 
         threading.Thread(target=task, daemon=True).start()
 
     def run_render(self):
-        # 1. Open File Dialog to choose a .blend file
-        initial_dir = os.path.dirname(os.path.abspath(__file__))
-        sldasm_path = self.selected_file_path.get()
-        if sldasm_path and sldasm_path != "No file selected" and os.path.exists(sldasm_path):
-            suggested_dir = os.path.splitext(sldasm_path)[0] + "__BLENDER"
-            if os.path.isdir(suggested_dir):
-                initial_dir = suggested_dir
-            else:
-                initial_dir = os.path.dirname(sldasm_path)
+        blend_file = self.selected_blend_path.get()
+        if not blend_file or blend_file in ("No blend file selected", "No blend file found"):
+            messagebox.showerror("Error", "No Blender file selected or found.")
+            return
 
-        blend_file = filedialog.askopenfilename(
-            initialdir=initial_dir,
-            title="Select Blender File to Render",
-            filetypes=[("Blender File", "*.blend"), ("All Files", "*.*")]
-        )
-        
-        if not blend_file:
-            return # User cancelled
+        if not os.path.exists(blend_file):
+            messagebox.showerror("Error", f"Blend file not found:\n{blend_file}")
+            return
              
         self.btn_render.config(state="disabled")
         self.log("-" * 40)
@@ -234,27 +264,10 @@ class AutoRenderApp:
         threading.Thread(target=task, daemon=True).start()
 
     def run_open_blend(self):
-        file_path = self.selected_file_path.get()
-        blend_file = None
-        if file_path and file_path != "No file selected":
-            base_path_no_ext = os.path.splitext(file_path)[0]
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            blend_dir = base_path_no_ext + "__BLENDER"
-            blend_file = os.path.join(blend_dir, f"{base_name}.blend")
-            
-        if not blend_file or not os.path.exists(blend_file):
-            initial_dir = os.path.dirname(os.path.abspath(__file__))
-            if file_path and file_path != "No file selected" and os.path.exists(file_path):
-                initial_dir = os.path.dirname(file_path)
-            
-            blend_file = filedialog.askopenfilename(
-                initialdir=initial_dir,
-                title="Select Blender File to Open",
-                filetypes=[("Blender File", "*.blend"), ("All Files", "*.*")]
-            )
-            
-        if not blend_file or not os.path.exists(blend_file):
-            return # No file selected or found
+        blend_file = self.selected_blend_path.get()
+        if not blend_file or blend_file in ("No blend file selected", "No blend file found") or not os.path.exists(blend_file):
+            messagebox.showerror("Error", "No Blender file selected or found.")
+            return
             
         # Read Blender Path
         blender_exe = "blender"
@@ -290,8 +303,12 @@ class AutoRenderApp:
         if os.path.exists(blend_file):
             self.log(f"Suggested Blend file found: {os.path.basename(blend_file)}")
             self.btn_open.config(state="normal")
+            self.btn_render.config(state="normal")
+            self.selected_blend_path.set(blend_file)
         else:
             self.btn_open.config(state="disabled")
+            self.btn_render.config(state="disabled")
+            self.selected_blend_path.set("No blend file found")
 
 if __name__ == "__main__":
     root = tk.Tk()
