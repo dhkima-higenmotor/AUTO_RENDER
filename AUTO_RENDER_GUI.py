@@ -7,9 +7,17 @@ import os
 import sys
 import shutil
 
+# Make the process DPI aware to render sharp system fonts on Windows
+try:
+    import ctypes
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
+
 class AutoRenderApp:
     def __init__(self, root):
         self.root = root
+        self.root.option_add("*Font", "TkDefaultFont")
         self.root.title("Auto Render GUI")
         self.root.geometry("800x560")
         
@@ -72,7 +80,7 @@ class AutoRenderApp:
         frame_log = tk.LabelFrame(self.root, text="Output Log", padx=10, pady=10)
         frame_log.pack(fill="both", expand=True, padx=10, pady=5)
         
-        self.txt_log = scrolledtext.ScrolledText(frame_log, state='disabled', height=10)
+        self.txt_log = scrolledtext.ScrolledText(frame_log, state='disabled', height=10, font="TkDefaultFont")
         self.txt_log.pack(fill="both", expand=True)
         # Define tag for error text
         self.txt_log.tag_config("stderr", foreground="red")

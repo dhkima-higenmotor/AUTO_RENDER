@@ -73,7 +73,6 @@ def main():
     import_script_content = f"""
 import bpy
 import os
-import json
 import mathutils
 
 def run():
@@ -165,91 +164,7 @@ def run():
              if not imported_objs and bpy.context.active_object:
                   imported_objs = [bpy.context.active_object]
 
-        # Material Application
-        json_filename = os.path.splitext(f)[0] + ".json"
-        json_path = os.path.join(input_dir, json_filename)
-        
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as jf:
-                    mat_data = json.load(jf)
-                
-                color = mat_data.get("color", [0.8, 0.8, 0.8])
-                specular = mat_data.get("specular", 0.5)
-                shininess = mat_data.get("shininess", 0.5)
-                transparency = mat_data.get("transparency", 0.0)
-                emission = mat_data.get("emission", 0.0)
-                
-                mat_name = f"Mat_{{os.path.splitext(f)[0]}}"
-                mat = bpy.data.materials.new(name=mat_name)
-                if hasattr(mat, 'use_nodes') and not mat.use_nodes:
-                     try:
-                          mat.use_nodes = True
-                     except:
-                          pass
-                
-                if len(color) == 3:
-                     mat.diffuse_color = color + [1.0]
-                elif len(color) == 4:
-                     mat.diffuse_color = color
-                
-                # Reconstruct material nodes cleanly
-                nodes = mat.node_tree.nodes
-                links = mat.node_tree.links
-                nodes.clear()
-                
-                out_node = nodes.new("ShaderNodeOutputMaterial")
-                out_node.location = (400, 0)
-                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-                bsdf.location = (0, 0)
-                links.new(bsdf.outputs['BSDF'], out_node.inputs['Surface'])
-                
-                if bsdf:
-                    # 1. Base Color
-                    if len(color) == 3:
-                        set_socket(bsdf, 'Base Color', color + [1.0])
-                    
-                    # 2. Roughness
-                    set_socket(bsdf, 'Roughness', 1.0 - shininess)
-                    
-                    # 3. Specular
-                    if not set_socket(bsdf, 'Specular IOR Level', specular):
-                        set_socket(bsdf, 'Specular', specular)
-                        
-                    # 4. Emission
-                    if emission > 0:
-                        set_socket(bsdf, 'Emission Color', color + [1.0])
-                        set_socket(bsdf, 'Emission Strength', emission)
-                    
-                    # 5. Transparency / Transmission
-                    if transparency > 0:
-                        if not set_socket(bsdf, 'Transmission Weight', transparency):
-                            set_socket(bsdf, 'Transmission', transparency)
-                        set_socket(bsdf, 'Alpha', 1.0 - transparency)
-                        
-                        mat.blend_method = 'HASHED'
-                        mat.shadow_method = 'HASHED'
 
-                # Assign Material to imported object(s)
-                for obj in imported_objs:
-                    if obj.type == 'MESH':
-                        # Robust active activation and slot assignment
-                        bpy.ops.object.select_all(action='DESELECT')
-                        obj.select_set(True)
-                        bpy.context.view_layer.objects.active = obj
-                        
-                        obj.data.materials.clear()
-                        obj.data.materials.append(mat)
-                        if hasattr(obj.data, "polygons"):
-                            for poly in obj.data.polygons:
-                                poly.material_index = 0
-                        
-                print(f"Applied material from {{json_filename}}")
-
-            except Exception as e:
-                print(f"Failed to apply material from {{json_filename}}: {{e}}")
-        else:
-            print(f"No material JSON found for {{f}}")
 
     # 4.5. Special Material Override & Default Material Assignment (OUTSIDE the STL import loop)
     print("Applying smart material assignment based on component names...")

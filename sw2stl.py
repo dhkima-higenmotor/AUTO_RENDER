@@ -4,241 +4,7 @@ import json
 import win32com.client
 import pythoncom
 
-def get_material_properties(component, swApp):
-    """
-    Extracts material properties (Color, Ambient, Diffuse, Specular, Shininess, Transparency, Emission).
-    Prioritizes Component-level settings (overrides), then falls back to Model-level (Part) settings.
-    """
-    mat_props = None
-    
-    # Debug prefix
-    comp_name = component.Name2
-    # print(f"DEBUG: Checking component: {comp_name}")
-    try:
-        # GetSuppression might be exposed as property or method depending on Dispatch
-        val = component.GetSuppression
-        if callable(val):
-            suppression = val()
-        else:
-            suppression = val
-            
-        # swComponentSuppressed = 0
-        # swComponentLightweight = 1
-        # swComponentFullyResolved = 2
-        # swComponentResolved = 3
-        # swComponentFullyLightweight = 4
-        if suppression in (1, 4): # Only resolve if lightweight (1 or 4)
-            res = component.SetSuppression2(2) # 2 = Resolve
-            
-            # Re-check
-            val = component.GetSuppression
-            if callable(val): new_suppression = val()
-            else: new_suppression = val
-            
-        # Check Path
-        val = component.GetPathName
-        if callable(val): path = val()
-        else: path = val
-        
-    except Exception as e:
-         pass
-    
-    # 1. Component Level Override (Direct checks)
-    try:
-        raw_props = component.MaterialPropertyValues
-        if raw_props and len(raw_props) >= 9:
-            mat_props = raw_props
-            # print(f"  > Found Component Override for {comp_name}")
-    except:
-        pass
 
-    # 2. Configuration Specific Material (The Fix)
-    if not mat_props:
-        try:
-            # Option 1: swThisConfiguration (1)
-            # Try passing empty string instead of None for ConfigName
-            raw_props = component.GetMaterialPropertyValues2(1, "") # Changed None to ""
-            if raw_props and len(raw_props) >= 9 and raw_props[0] >= 0:
-                mat_props = raw_props
-                # print(f"  > Found Config Specific Material for {comp_name}")
-        except Exception as e:
-             # print(f"  > Config Material failed: {e}")
-             pass
-
-    # 3. Model Level (Part/Assembly material) - Fallback
-    if not mat_props:
-        model = None
-        try:
-            val = component.GetModelDoc2
-            if callable(val): model = val()
-            else: model = val
-            
-            if model is None:
-                # print(f"  > GetModelDoc2 returned None.")
-                pass
-        except Exception as e:
-            # print(f"  > GetModelDoc2 failed: {e}")
-            try: model = component.GetModelDoc()
-            except Exception as e2: pass # print(f"  > GetModelDoc (Legacy) failed: {e2}")
-            
-        if model:
-            try:
-                # IModelDoc2 / PartDoc usually has MaterialPropertyValues
-                raw_props = model.MaterialPropertyValues
-                if raw_props and len(raw_props) >= 9:
-                    mat_props = raw_props
-                    # print(f"  > Found Model Material for {comp_name}")
-            except:
-                try: 
-                    raw_props = model.Extension.MaterialPropertyValues
-                    if raw_props and len(raw_props) >= 9:
-                         mat_props = raw_props
-                         # print(f"  > Found Model Ext Material for {comp_name}")
-                except: pass
-        
-        # 4. Fallback: Try obtaining ModelDoc from SW Application by Path
-        if not mat_props and not model:
-            try:
-                path_val = component.GetPathName
-                if callable(path_val): c_path = path_val()
-                else: c_path = path_val
-                
-                if c_path:
-                    # GetOpenDocumentByName accepts filename/path
-                    model_doc = swApp.GetOpenDocumentByName(c_path)
-                    if model_doc:
-                        # print(f"  > Recovered ModelDoc via app.GetOpenDocumentByName")
-                        # Try getting material from this doc
-                        try:
-                            raw_props = model_doc.MaterialPropertyValues
-                            if raw_props and len(raw_props) >= 9:
-                                mat_props = raw_props
-                        except:
-                             try:
-                                raw_props = model_doc.Extension.MaterialPropertyValues
-                                if raw_props and len(raw_props) >= 9:
-                                    mat_props = raw_props
-                             except: pass
-            except Exception as e:
-                # print(f"  > App Fallback failed: {e}")
-                pass
-        
-        if not mat_props and not model:
-            # print(f"DEBUG: ModelDoc not found for {comp_name} (Lightweight?)")
-            pass
-
-    if mat_props:
-        return {
-            "color": [mat_props[0], mat_props[1], mat_props[2]], # R, G, B
-            "ambient": mat_props[3],
-            "diffuse": mat_props[4],
-            "specular": mat_props[5],
-            "shininess": mat_props[6],
-            "transparency": mat_props[7],
-            "emission": mat_props[8]
-        }
-    
-    # Default values if retrieval failed
-    return {
-        "color": [0.8, 0.8, 0.8],
-        "ambient": 1.0,
-        "diffuse": 1.0,
-        "specular": 1.0,
-        "shininess": 0.5,
-        "transparency": 0.0,
-        "emission": 0.0
-    }
-
-def traverse_and_save_materials(component, output_dir, assembly_name, swApp):
-    """
-    Recursively traverses the assembly. 
-    For each part (leaf node), generates a JSON file with material properties.
-    Filename: "{assembly_name} - {component.Name2}.json"
-    """
-    # Skip suppressed components
-    try:
-        val = component.GetSuppression
-        if callable(val):
-            suppression = val()
-        else:
-            suppression = val
-            
-        if suppression == 0: # swComponentSuppressed
-            return
-    except:
-        pass
-
-    # Get Children
-    children = component.GetChildren
-    if callable(children):
-        children = children()
-    
-    if children:
-        # It's an assembly or sub-assembly
-        for child in children:
-            if child:
-                traverse_and_save_materials(child, output_dir, assembly_name, swApp)
-    else:
-        # It's a leaf part (likely exported as an STL)
-        # Construct expected STL filename pattern: AssemblyName - ComponentName-Instance.stl
-        # Note: Name2 usually includes Instance Number (e.g. Part-1)
-        part_name = component.Name2
-        # Sanitize name (replace / with space to match STL export behavior)
-        part_name = part_name.replace('/', ' ').replace('\\', ' ')
-        
-        # Expected Full Filename
-        full_json_name = f"{assembly_name} - {part_name}.json"
-        target_json_name = full_json_name 
-        
-        # Check against existing STLs to handle Truncation (___)
-        # 1. Expected STL Name
-        expected_stl_name = f"{assembly_name} - {part_name}.stl"
-        expected_stl_path = os.path.join(output_dir, expected_stl_name)
-        
-        if not os.path.exists(expected_stl_path):
-            # 2. Search for truncated version
-            # Pattern: Start...___...End.stl
-            # We iterate all STLs and check if they "match" the full name vaguely
-            stl_files = os.listdir(output_dir)
-            for f in stl_files:
-                if f.lower().endswith('.stl') and "___" in f:
-                    # Candidates
-                    # Check if 'f' can be a truncated version of 'expected_stl_name'
-                    # e.g. "LongNamePart1...___...End.stl"
-                    # Simple heuristic: Split by ___ and check if parts exist in full name in order
-                    # Or simpler: SolidWorks usually truncates the MIDDLE.
-                    
-                    # Let's try to match prefix and suffix
-                    prefix, suffix = f.split("___", 1)
-                    suffix_base, _ = os.path.splitext(suffix)
-                    prefix_base = prefix
-                    
-                    # Warning: This is loose matching.
-                    # But if the full name STARTS with prefix AND ENDS with suffix (extensionless), match.
-                    
-                    # Handle extension in expected name
-                    base_expected = os.path.splitext(expected_stl_name)[0]
-                    
-                    if base_expected.startswith(prefix_base) and base_expected.endswith(suffix_base):
-                        # FOUND MATCH
-                        # Use this filename for JSON
-                        target_json_name = os.path.splitext(f)[0] + ".json"
-                        break
-        
-        json_path = os.path.join(output_dir, target_json_name)
-        
-        # Get Material
-        material = get_material_properties(component, swApp)
-        
-        try:
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(material, f, indent=4)
-        except Exception as e:
-            # If file exists and has content, maybe ignore or log differently?
-            if os.path.exists(json_path) and os.path.getsize(json_path) > 0:
-                pass 
-            else:
-                print(f"Failed to save {json_filename}: {e}")
 
 def main():
     if len(sys.argv) < 2:
@@ -282,10 +48,19 @@ def main():
         if configs and len(configs) > 1:
             print(f"Multiple configurations found: {configs}")
             import tkinter as tk
+            import tkinter.font as tkfont
             
             def choose_config_dialog(config_names):
+                # Make the process DPI aware to render sharp system fonts on Windows
+                try:
+                    import ctypes
+                    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+                except Exception:
+                    pass
+                    
                 selected = [config_names[0]]
                 root = tk.Tk()
+                root.option_add("*Font", "TkDefaultFont")
                 root.title("Select Configuration")
                 root.geometry("350x250")
                 root.attributes("-topmost", True)
@@ -298,14 +73,17 @@ def main():
                 y = (root.winfo_screenheight() // 2) - (height // 2)
                 root.geometry(f'{width}x{height}+{x}+{y}')
                 
-                lbl = tk.Label(root, text="Select SolidWorks Configuration:", font=("Arial", 10, "bold"), pady=10)
+                sys_font = tkfont.nametofont("TkDefaultFont")
+                bold_sys_font = tkfont.Font(root=root, family=sys_font.cget("family"), size=sys_font.cget("size"), weight="bold")
+                
+                lbl = tk.Label(root, text="Select SolidWorks Configuration:", font=bold_sys_font, pady=10)
                 lbl.pack()
                 
                 frame = tk.Frame(root)
                 frame.pack(fill="x", padx=20, pady=5)
                 
                 scroll = tk.Scrollbar(frame, orient="vertical")
-                listb = tk.Listbox(frame, yscrollcommand=scroll.set, font=("Arial", 10), height=6)
+                listb = tk.Listbox(frame, yscrollcommand=scroll.set, font="TkDefaultFont", height=6)
                 scroll.config(command=listb.yview)
                 scroll.pack(side="right", fill="y")
                 listb.pack(side="left", fill="both", expand=True)
@@ -394,6 +172,59 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to show configuration '{selected_config}': {e}")
 
+    # 2.5. Identify and delete suppressed components from the memory model
+    model_type = model.GetType() if callable(model.GetType) else model.GetType
+    if model_type == 2:  # swDocASSEMBLY = 2
+        try:
+            print("Identifying and deleting suppressed components from memory...")
+            conf_mgr = model.ConfigurationManager
+            active_conf = conf_mgr.ActiveConfiguration
+            root_comp = active_conf.GetRootComponent3(True)
+            
+            if root_comp:
+                suppressed_comps = []
+                def collect_suppressed(comp):
+                    try:
+                        supp_val = comp.GetSuppression() if callable(comp.GetSuppression) else comp.GetSuppression
+                        if supp_val == 0:  # swComponentSuppressed = 0
+                            suppressed_comps.append(comp)
+                            return
+                    except Exception:
+                        pass
+                    
+                    try:
+                        children = comp.GetChildren() if callable(comp.GetChildren) else comp.GetChildren
+                        if children:
+                            for child in children:
+                                if child:
+                                    collect_suppressed(child)
+                    except Exception:
+                        pass
+                
+                collect_suppressed(root_comp)
+                
+                if suppressed_comps:
+                    print(f"Found {len(suppressed_comps)} suppressed component(s). Deleting from memory...")
+                    model.ClearSelection2(True)
+                    for comp in suppressed_comps:
+                        try:
+                            comp.Select4(True, None, False)
+                        except Exception as e:
+                            print(f"Warning: Failed to select suppressed component: {e}")
+                    
+                    # Delete selected components
+                    # Option 3 (swDelete_Absorbed + swDelete_Children) ensures dependent child components are deleted
+                    deleted = model.Extension.DeleteSelection2(3)
+                    if deleted:
+                        print("Suppressed components deleted from memory successfully.")
+                    else:
+                        print("DeleteSelection2 returned False. Trying EditDelete...")
+                        model.EditDelete()
+                else:
+                    print("No suppressed components found in the active configuration.")
+        except Exception as e:
+            print(f"Error handling suppressed components: {e}")
+
     # 3. Create Output Directory
     # Directory: [original_dir]/[filename]__STL/
     output_dir = os.path.join(file_dir, f"{file_name}__STL")
@@ -448,20 +279,6 @@ def main():
 
     if saved:
         print("Export successful.")
-        
-        # 6. Generate Individual Material JSONs
-        print("Generating individual material JSONs...")
-        try:
-             conf_mgr = model.ConfigurationManager
-             active_conf = conf_mgr.ActiveConfiguration
-             root_comp = active_conf.GetRootComponent3(True)
-             
-             if root_comp:
-                 traverse_and_save_materials(root_comp, output_dir, file_name, swApp)
-                 print("Material JSONs generated.")
-        except Exception as e:
-             print(f"Error generating material JSONs: {e}")
-             
     else:
         print("Export returned False (Failure). Check write permissions or filename.")
 
@@ -478,12 +295,12 @@ def main():
             if doc_title and "*" in doc_title:
                 doc_title = doc_title.split("*")[0].strip()
             
-            print(f"Closing document in SolidWorks (QuitDoc): {doc_title}")
-            swApp.QuitDoc(doc_title)
+            print(f"Closing document in SolidWorks (CloseDoc): {doc_title}")
+            swApp.CloseDoc(doc_title)
             
             # Secondary fallback with exact filename with extension
             if doc_title != file_name_with_ext:
-                swApp.QuitDoc(file_name_with_ext)
+                swApp.CloseDoc(file_name_with_ext)
         except Exception as e:
             print(f"Failed to close document in SolidWorks: {e}")
 
