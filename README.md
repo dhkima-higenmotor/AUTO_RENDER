@@ -17,7 +17,7 @@
 * **이름 기반 스마트 재질 매핑**: 하드코딩된 색상 정보 대신 부품명을 기반으로 질감과 반사율이 가미된 정밀한 스튜디오 금속/플라스틱 재질을 자동 부여합니다.
 * **프로 스튜디오 조명**: 피사체의 크기에 알맞은 광량(Energy)과 크기를 가진 3점 Area 조명(Key, Fill, Rim)을 카메라 앵글에 맞춰 자동 생성합니다.
 * **Cycles GPU 고품질 렌더링 및 디노이즈**: Cycles 렌더 엔진 및 GPU 연산을 활용하며, 뷰포트 최대 64 샘플 및 렌더 최대 512 샘플링과 디노이즈(Denoise)를 기본 적용해 깨끗하고 부드러운 고품질 이미지를 빠르게 얻을 수 있습니다.
-* **백색광 환경 및 배경 투명화 (RGBA)**: 월드 환경 조명(World Background)을 백색광으로 채워 피사체에 밝고 화사한 톤을 제공하면서도, 최종 렌더링 필름은 투명하게 처리(RGBA)하여 배경이 없는 고품질 제품 이미지를 즉시 추출할 수 있습니다.
+* **BlenderKit HDRI 환경 조명 및 배경 투명화 (RGBA)**: BlenderKit에서 제공하는 무료 Office HDRI 환경 텍스처를 배경 조명으로 자동 매핑하여 피사체에 더욱 사실적이고 입체적인 반사광과 음영을 제공합니다. 동시에 최종 렌더링 필름은 투명하게 처리(RGBA)하여 배경이 투명하게 제거된 고품질 제품 이미지를 즉시 추출할 수 있습니다.
 
 
 ---
@@ -64,15 +64,20 @@
   > **억제 부품 자동 필터링**: 현재 선택된 설정(Configuration)에서 **억제된(Suppressed) 부품들은 자동으로 감지되어 추출에서 제외**되며, 오직 활성화된 부품들만 내보냅니다. 원본 파일은 수정 없이 안전하게 닫힙니다.
 * 완료 시 어셈블리 파일과 동일한 경로에 `[어셈블리명]__STL` 폴더가 생성됩니다.
 
-#### **Step 4: 블렌더 씬 구성 및 재질 매핑 (`Make BLEND`)**
+#### **Step 4: 블렌더 씬 구성, BlenderKit 재질 및 HDRI 매핑 (`Make BLEND`)**
 * **`Make BLEND`** 버튼을 누릅니다. 추출된 STL 파일들을 모아 자동으로 3D 씬을 재구성합니다.
 * > [!TIP]
-  > **스마트 이름 기반 재질 매핑**: 부품 파일명에 포함된 단어를 스캔하여 가장 적절한 금속 및 플라스틱 재질을 자동 매핑합니다.
-  > * `screw`, `bolt`, `pin`, `washer` 등 🔩 ➡️ **Brushed Nickel** (브러시드 니켈)
-  > * `bearing` ⚙️ ➡️ **Stainless Steel** (스테인리스 스틸)
-  > * `stator` + `coil` ➡️ **Copper** (구리 코일)
-  > * `housing`, `case`, `cover` 등 외관 부품 ➡️ **Pearl Black Plastic** (펄 블랙 플라스틱)
-  > * 기타 일반 부품 ➡️ **Aluminium** (알루미늄)
+  > **BlenderKit 기반 스마트 재질 매핑**: 부품 파일명에 포함된 단어를 스캔하여 **BlenderKit**의 고품질 재질을 자동으로 매핑합니다. (인터넷 미연결 시 로컬 캐시에서 불러오며, 실패 시 기본 절차적 재질로 폴백됩니다.)
+  > * `screw`, `bolt`, `pin`, `washer` 등 🔩 ➡️ **Brushed Nickel** (브러시드 니켈, Asset ID: `b058fc10-bd2a-4cb5-8e05-f330fad99101`)
+  > * `bearing` ⚙️ ➡️ **Stainless Steel** (스테인리스 스틸, Asset ID: `79540f1a-c977-436f-b949-d9a2aa4c44a1`)
+  > * `stator` + `coil` ➡️ **Copper** (구리 코일, Asset ID: `b19cef5d-04f7-4569-b53f-8c3475b2526d`)
+  > * `stator` + `core` ➡️ **Carbon Steel** (탄소강, Asset ID: `58281db0-4437-4069-b925-5a8ab1c32197`)
+  > * `stator` + `bobbin` ➡️ **Green Plastic** (녹색 플라스틱, Asset ID: `387e8822-6486-473d-92ff-3a91f426dd64`)
+  > * `rotor` + `magnet` ➡️ **Brushed Nickel** (브러시드 니켈, Asset ID: `b058fc10-bd2a-4cb5-8e05-f330fad99101`)
+  > * `housing`, `case`, `cover` 등 외관 부품 ➡️ **Pearl Black Plastic** (펄 블랙 플라스틱, Asset ID: `386d3d08-9144-4145-881e-4b2d25c8202e`)
+  > * 기타 일반 부품 ➡️ **Aluminium Sand** (알루미늄 샌드, Asset ID: `8e58e654-b722-49b7-aa44-e24210d5eede`)
+* > [!TIP]
+  > **BlenderKit HDRI 자동 매핑**: BlenderKit의 무료 Office HDRi 배경 이미지(예: `Office` 이름으로 된 HDRi)를 환경 텍스처로 자동 적용하여 현실적인 반사와 라이팅 환경을 조성합니다.
 * 4방향 Isometric 카메라와 3점 스튜디오 조명이 자동으로 배치되며, 완료 시 `[어셈블리명]__BLENDER` 폴더 내에 `[어셈블리명].blend` 파일이 생성됩니다.
 * *(변환이 성공하면 임시로 생성되었던 `__STL` 폴더는 공간 확보를 위해 자동으로 안전하게 삭제됩니다.)*
 

@@ -169,7 +169,7 @@ def run():
     # 4.5. Special Material Override & Default Material Assignment (OUTSIDE the STL import loop)
     print("Applying smart material assignment based on component names...")
     
-    # Define helper to create/retrieve materials with proper properties
+    # Define helper to create/retrieve materials with proper properties (fallback)
     def get_or_create_material(name, diffuse_color, metallic, roughness, specular=0.5, extra_setup_func=None):
         mat = bpy.data.materials.get(name)
         if not mat:
@@ -212,6 +212,281 @@ def run():
     mat_nickel = get_or_create_material("Mat_Nickel", (0.66, 0.60, 0.54), 1.0, 0.25)
     mat_aluminium = get_or_create_material("Mat_Aluminium", (0.91, 0.92, 0.92), 1.0, 0.3)
 
+    def load_blenderkit_material_cached(asset_ids):
+        import os
+        from pathlib import Path
+        import bpy
+        
+        global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
+        try:
+            for addon_name in bpy.context.preferences.addons.keys():
+                if "blenderkit" in addon_name:
+                    prefs = bpy.context.preferences.addons[addon_name].preferences
+                    if hasattr(prefs, "global_dir") and prefs.global_dir:
+                        global_dir = Path(prefs.global_dir)
+                        break
+        except Exception:
+            pass
+            
+        materials_dir = global_dir / "materials"
+        if not materials_dir.exists():
+            return None
+            
+        mat = None
+        for asset_id in asset_ids:
+            for root, dirs, files in os.walk(materials_dir):
+                if asset_id in root or any(asset_id in d for d in dirs):
+                    for f in files:
+                        if f.endswith(".blend"):
+                            blend_path = Path(root) / f
+                            try:
+                                with bpy.data.libraries.load(str(blend_path)) as (data_from, data_to):
+                                    if data_from.materials:
+                                        mat_name = data_from.materials[0]
+                                        existing = bpy.data.materials.get(mat_name)
+                                        if existing:
+                                            mat = existing
+                                        else:
+                                            data_to.materials = [mat_name]
+                            except Exception as load_err:
+                                print(f"Error loading from cache: {{load_err}}")
+                            if mat is None:
+                                mat = bpy.data.materials.get(mat_name)
+                            if mat:
+                                break
+                if mat:
+                    break
+            if mat:
+                break
+        return mat
+
+    def apply_blenderkit_material(obj, asset_ids, fallback_material):
+        import os
+        from pathlib import Path
+        import urllib.request
+        import json
+        import bpy
+        
+        # 1. Try to load from cache first
+        mat = load_blenderkit_material_cached(asset_ids)
+        if mat:
+            obj.data.materials.clear()
+            obj.data.materials.append(mat)
+            if hasattr(obj.data, "polygons"):
+                for poly in obj.data.polygons:
+                    poly.material_index = 0
+            print(f"Applied BlenderKit material '{{mat.name}}' from cache to '{{obj.name}}'")
+            return
+
+        print(f"BlenderKit material with ID(s) {{asset_ids}} not found in cache. Triggering download...")
+        
+        # 2. Trigger background download
+        ext_name = None
+        import addon_utils
+        for mod in addon_utils.modules():
+            if "blenderkit" in mod.__name__:
+                ext_name = mod.__name__
+                break
+                
+        if ext_name:
+            try:
+                default_state, loaded_state = addon_utils.check(ext_name)
+                if not loaded_state:
+                    addon_utils.enable(ext_name)
+                
+                # Fetch details, clean avatar fields, inject and trigger
+                asset_id = asset_ids[0]
+                url = f"https://www.blenderkit.com/api/v1/assets/{{asset_id}}/"
+                req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
+                with urllib.request.urlopen(req) as response:
+                    asset_data = json.loads(response.read().decode())
+                
+                if "author" in asset_data:
+                    author = asset_data["author"]
+                    for k in list(author.keys()):
+                        if k.startswith("avatar") and k != "avatar128":
+                            author.pop(k, None)
+                
+                # Resolve the search module dynamically
+                import sys
+                search_module = None
+                for name, module in sys.modules.items():
+                    if "blenderkit" in name and name.endswith(".search"):
+                        search_module = module
+                        break
+                        
+                if search_module:
+                    try:
+                        parsed_asset_data = search_module.parse_result(asset_data)
+                    except Exception:
+                        parsed_asset_data = asset_data
+                        if "assetBaseId" not in parsed_asset_data:
+                            parsed_asset_data["assetBaseId"] = asset_id
+                        if "assetType" not in parsed_asset_data:
+                            parsed_asset_data["assetType"] = "material"
+                    
+                    history_step = search_module.get_active_history_step()
+                    history_step["search_results"] = [parsed_asset_data]
+                    
+                    # Run download operator
+                    bpy.ops.scene.blenderkit_download(
+                        asset_index=0,
+                        target_object=obj.name
+                    )
+                    print(f"Triggered background download for '{{asset_id}}' on '{{obj.name}}'")
+            except Exception as download_err:
+                print(f"Failed to trigger download for '{{asset_ids}}': {{download_err}}")
+        else:
+            print("BlenderKit addon is not installed or enabled.")
+
+        # 3. Apply fallback
+        if fallback_material:
+            obj.data.materials.clear()
+            obj.data.materials.append(fallback_material)
+            if hasattr(obj.data, "polygons"):
+                for poly in obj.data.polygons:
+                    poly.material_index = 0
+            print(f"Applied procedural fallback material '{{fallback_material.name}}' to '{{obj.name}}'")
+
+    def apply_blenderkit_hdri(asset_ids):
+        import os
+        from pathlib import Path
+        import bpy
+        import urllib.request
+        import json
+
+        # 1. Search local cache first
+        global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
+        try:
+            for addon_name in bpy.context.preferences.addons.keys():
+                if "blenderkit" in addon_name:
+                    prefs = bpy.context.preferences.addons[addon_name].preferences
+                    if hasattr(prefs, "global_dir") and prefs.global_dir:
+                        global_dir = Path(prefs.global_dir)
+                        break
+        except Exception:
+            pass
+            
+        hdrs_dir = global_dir / "hdrs"
+        image_path = None
+        if hdrs_dir.exists():
+            for asset_id in asset_ids:
+                for root, dirs, files in os.walk(hdrs_dir):
+                    if asset_id in root or any(asset_id in d for d in dirs):
+                        for f in files:
+                            if f.lower().endswith((".exr", ".hdr")):
+                                image_path = Path(root) / f
+                                break
+                    if image_path:
+                        break
+                if image_path:
+                    break
+                    
+        # 2. If found, load and apply environment texture
+        if image_path:
+            try:
+                img = bpy.data.images.load(str(image_path))
+                world = bpy.context.scene.world
+                if not world:
+                    world = bpy.data.worlds.new("World")
+                    bpy.context.scene.world = world
+                world.use_nodes = True
+                nodes = world.node_tree.nodes
+                links = world.node_tree.links
+                nodes.clear()
+                
+                out_node = nodes.new("ShaderNodeOutputWorld")
+                out_node.location = (400, 0)
+                bg_node = nodes.new("ShaderNodeBackground")
+                bg_node.location = (200, 0)
+                bg_node.inputs['Strength'].default_value = 1.0
+                tex_node = nodes.new("ShaderNodeTexEnvironment")
+                tex_node.location = (0, 0)
+                tex_node.image = img
+                
+                links.new(tex_node.outputs['Color'], bg_node.inputs['Color'])
+                links.new(bg_node.outputs['Background'], out_node.inputs['Surface'])
+                print(f"Applied BlenderKit HDRI background '{{image_path.name}}' from cache.")
+                return True
+            except Exception as load_err:
+                print(f"Error loading cached HDRI: {{load_err}}")
+
+        # 3. If not found in cache, trigger background download
+        print(f"Office HDRI ID(s) {{asset_ids}} not found in cache. Triggering download...")
+        ext_name = None
+        import addon_utils
+        for mod in addon_utils.modules():
+            if "blenderkit" in mod.__name__:
+                ext_name = mod.__name__
+                break
+                
+        if ext_name:
+            try:
+                default_state, loaded_state = addon_utils.check(ext_name)
+                if not loaded_state:
+                    addon_utils.enable(ext_name)
+                
+                # Fetch details, clean avatar fields, inject and trigger
+                asset_id = asset_ids[0]
+                url = f"https://www.blenderkit.com/api/v1/assets/{{asset_id}}/"
+                req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
+                with urllib.request.urlopen(req) as response:
+                    asset_data = json.loads(response.read().decode())
+                
+                if "author" in asset_data:
+                    author = asset_data["author"]
+                    for k in list(author.keys()):
+                        if k.startswith("avatar") and k != "avatar128":
+                            author.pop(k, None)
+                
+                import sys
+                search_module = None
+                for name, module in sys.modules.items():
+                    if "blenderkit" in name and name.endswith(".search"):
+                        search_module = module
+                        break
+                        
+                if search_module:
+                    try:
+                        parsed_asset_data = search_module.parse_result(asset_data)
+                    except Exception:
+                        parsed_asset_data = asset_data
+                        if "assetBaseId" not in parsed_asset_data:
+                            parsed_asset_data["assetBaseId"] = asset_id
+                        if "assetType" not in parsed_asset_data:
+                            parsed_asset_data["assetType"] = "hdr"
+                    
+                    history_step = search_module.get_active_history_step()
+                    history_step["search_results"] = [parsed_asset_data]
+                    
+                    bpy.ops.scene.blenderkit_download(
+                        asset_index=0
+                    )
+                    print(f"Triggered background HDRI download for '{{asset_id}}'")
+            except Exception as download_err:
+                print(f"Failed to trigger download: {{download_err}}")
+        else:
+            print("BlenderKit addon is not installed or enabled.")
+            
+        # Fallback to white background if download not ready
+        world = bpy.context.scene.world
+        if not world:
+            world = bpy.data.worlds.new("World_White")
+            bpy.context.scene.world = world
+        world.use_nodes = True
+        nodes = world.node_tree.nodes
+        links = world.node_tree.links
+        nodes.clear()
+        out_node = nodes.new("ShaderNodeOutputWorld")
+        out_node.location = (400, 0)
+        bg_node = nodes.new("ShaderNodeBackground")
+        bg_node.location = (200, 0)
+        bg_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+        bg_node.inputs['Strength'].default_value = 1.0
+        links.new(bg_node.outputs['Background'], out_node.inputs['Surface'])
+        print("Applied fallback solid white background.")
+        return False
+
     hw_keywords = ["screw", "bolt", "key", "pin", "washer", "nut", "rivet", "나사", "볼트", "핀", "와셔", "너트", "리벳", "키"]
     bearing_keywords = ["bearing", "베어링"]
     
@@ -219,47 +494,45 @@ def run():
         if obj.type == 'MESH':
             name_lower = obj.name.lower()
             assigned_mat = None
+            asset_ids = []
             
             # Rule 1: Brushed Nickel (Screws, Bolts, Keys, etc.)
             if any(hw in name_lower for hw in hw_keywords):
                 assigned_mat = mat_brushed_nickel
+                asset_ids = ["b058fc10-bd2a-4cb5-8e05-f330fad99101"]
                 
             # Rule 2: Stainless Steel (Bearings)
             elif any(brg in name_lower for brg in bearing_keywords):
                 assigned_mat = mat_stainless_steel
+                asset_ids = ["79540f1a-c977-436f-b949-d9a2aa4c44a1"]
                 
             # Rule 3: STATOR + COIL -> Copper
             elif "stator" in name_lower and "coil" in name_lower:
                 assigned_mat = mat_copper
+                asset_ids = ["b19cef5d-04f7-4569-b53f-8c3475b2526d", "cba239ae-5280-48f1-a1ba-61e36d98d406"]
                 
             # Rule 4: STATOR + CORE -> Carbon Steel
             elif "stator" in name_lower and "core" in name_lower:
                 assigned_mat = mat_carbon_steel
+                asset_ids = ["58281db0-4437-4069-b925-5a8ab1c32197"]
                 
             # Rule 5: STATOR + BOBBIN -> Green Plastic
             elif "stator" in name_lower and "bobbin" in name_lower:
                 assigned_mat = mat_green_plastic
+                asset_ids = ["387e8822-6486-473d-92ff-3a91f426dd64"]
                 
-            # Rule 6: ROTOR + MAGNET -> Nickel
+            # Rule 6: ROTOR + MAGNET -> Nickel (which is Brushed Nickel per request #2)
             elif "rotor" in name_lower and "magnet" in name_lower:
-                assigned_mat = mat_nickel
+                assigned_mat = mat_brushed_nickel
+                asset_ids = ["b058fc10-bd2a-4cb5-8e05-f330fad99101"]
                 
             # Rule 7: Fallback -> Aluminium
             else:
                 assigned_mat = mat_aluminium
+                asset_ids = ["8e58e654-b722-49b7-aa44-e24210d5eede"]
                 
             if assigned_mat:
-                # Apply material
-                bpy.ops.object.select_all(action='DESELECT')
-                obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj
-                
-                obj.data.materials.clear()
-                obj.data.materials.append(assigned_mat)
-                if hasattr(obj.data, "polygons"):
-                    for poly in obj.data.polygons:
-                        poly.material_index = 0
-                print(f"Applied procedural {{assigned_mat.name}} to '{{obj.name}}'")
+                apply_blenderkit_material(obj, asset_ids, assigned_mat)
 
     # 4.6. Identify Outer/Housing Components for Pearl Black Plastic (OUTSIDE the STL import loop)
     print("Identifying outer housing components for Pearl Black Plastic...")
@@ -366,7 +639,7 @@ def run():
             
         print(f"Selected {{len(outer_objs)}} outer objects: {{[o.name for o in outer_objs]}}")
         
-        # Apply Pearl Black Painted Plastic Material
+        # Apply Pearl Black Painted Plastic Material (procedural fallback)
         mat_name = "Mat_Pearl_Black_Plastic"
         mat = bpy.data.materials.get(mat_name)
         if not mat:
@@ -398,17 +671,7 @@ def run():
                     
         # Apply to selected outer objects
         for obj in outer_objs:
-            # Robust Active Selection and Assignment
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
-            bpy.context.view_layer.objects.active = obj
-            
-            obj.data.materials.clear()
-            obj.data.materials.append(mat)
-            if hasattr(obj.data, "polygons"):
-                for poly in obj.data.polygons:
-                    poly.material_index = 0
-            print(f"Applied Pearl Black Painted Plastic to '{{obj.name}}'")
+            apply_blenderkit_material(obj, ["386d3d08-9144-4145-881e-4b2d25c8202e"], mat)
 
     # Center all objects
     # Select all mesh objects
@@ -535,18 +798,13 @@ def run():
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
 
-        # Configure World Background to White Light
-        world = bpy.data.worlds.new("World_White")
-        bpy.context.scene.world = world
-        if hasattr(world, 'use_nodes') and not world.use_nodes:
-            try:
-                world.use_nodes = True
-            except:
-                pass
-        bg_node = world.node_tree.nodes.get("Background")
-        if bg_node:
-            bg_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
-            bg_node.inputs['Strength'].default_value = 1.0
+        # Configure World Background to BlenderKit HDRI
+        office_hdri_ids = [
+            "32e4b557-839b-4aeb-bfc6-4dfd79ec3604",
+            "dc09a5ed-823e-4616-bc80-f34fc0cf66f2",
+            "8d783162-dbac-4610-b8dd-41b032623ecd"
+        ]
+        apply_blenderkit_hdri(office_hdri_ids)
         
         # Enable Film Transparency for transparent background (RGBA)
         bpy.context.scene.render.film_transparent = True
