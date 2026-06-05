@@ -151,6 +151,9 @@ else:
             cwd=os.path.dirname(blend_file)
         )
         
+        import locale
+        sys_encoding = locale.getpreferredencoding() or 'cp949'
+
         # Stream output
         while True:
             output = process.stdout.readline()
@@ -158,18 +161,24 @@ else:
                 break
             if output:
                 try:
-                    decoded = output.decode('utf-8', errors='replace').strip()
-                except:
-                    decoded = output.decode('cp949', errors='replace').strip()
+                    decoded = output.decode('utf-8').strip()
+                except UnicodeDecodeError:
+                    try:
+                        decoded = output.decode(sys_encoding).strip()
+                    except Exception:
+                        decoded = output.decode('utf-8', errors='replace').strip()
                 safe_print(decoded)
 
         # Check stderr remnants
         err_out = process.stderr.read()
         if err_out:
              try:
-                decoded_err = err_out.decode('utf-8', errors='replace').strip()
-             except:
-                decoded_err = err_out.decode('cp949', errors='replace').strip()
+                decoded_err = err_out.decode('utf-8').strip()
+             except UnicodeDecodeError:
+                try:
+                    decoded_err = err_out.decode(sys_encoding).strip()
+                except Exception:
+                    decoded_err = err_out.decode('utf-8', errors='replace').strip()
              safe_print(decoded_err, stream=sys.stderr)
 
         if process.returncode == 0:

@@ -155,11 +155,16 @@ class AutoRenderApp:
             
             # Helper to read stream
             def read_stream(stream, is_error):
+                import locale
+                sys_encoding = locale.getpreferredencoding() or 'cp949'
                 for line in iter(stream.readline, b''):
                     try:
-                        decoded_line = line.decode('utf-8', errors='replace').strip()
-                    except:
-                        decoded_line = line.decode('cp949', errors='replace').strip()
+                        decoded_line = line.decode('utf-8').strip()
+                    except UnicodeDecodeError:
+                        try:
+                            decoded_line = line.decode(sys_encoding).strip()
+                        except Exception:
+                            decoded_line = line.decode('utf-8', errors='replace').strip()
                         
                     if decoded_line:
                         self.log(decoded_line, is_error=is_error)
