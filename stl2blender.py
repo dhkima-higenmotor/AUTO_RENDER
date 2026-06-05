@@ -714,35 +714,42 @@ def run():
         max_dim = max(size_vec.x, size_vec.y, size_vec.z)
         if max_dim == 0: max_dim = 10.0 # Fallback
         
-        # Use diagonal length for safer auto-fit (80% fill)
-        # Ortho scale corresponds to the horizontal width of the view.
-        # To be safe, we use the diagonal of the bounding box.
-        diagonal = size_vec.length
-        if diagonal == 0: diagonal = 10.0
-        
-        # 80% fill means object size is 0.8 of view size
-        target_scale = diagonal / 0.8
-        
         # Create Target Empty at Origin
         bpy.ops.object.empty_add(location=(0, 0, 0))
         target = bpy.context.active_object
         target.name = "Cam_Target"
 
         # Create 4 Isometric Cameras (Front-Right, Front-Left, Back-Right, Back-Left)
+        # Position them at a safe distance (max_dim * 3) to prevent clipping
         camera_configs = [
-            ("Camera_ISO_FR", (max_dim*2, -max_dim*2, max_dim*2)),
-            ("Camera_ISO_FL", (-max_dim*2, -max_dim*2, max_dim*2)),
-            ("Camera_ISO_BR", (max_dim*2, max_dim*2, max_dim*2)),
-            ("Camera_ISO_BL", (-max_dim*2, max_dim*2, max_dim*2))
+            ("Camera_ISO_FR", (max_dim*3.0, -max_dim*3.0, max_dim*3.0)),
+            ("Camera_ISO_FL", (-max_dim*3.0, -max_dim*3.0, max_dim*3.0)),
+            ("Camera_ISO_BR", (max_dim*3.0, max_dim*3.0, max_dim*3.0)),
+            ("Camera_ISO_BL", (-max_dim*3.0, max_dim*3.0, max_dim*3.0))
         ]
         
+        # Calculate mathematically exact target scale based on 3D bounding box projection
+        corners = [
+            mathutils.Vector((min_corner.x, min_corner.y, min_corner.z)),
+            mathutils.Vector((min_corner.x, min_corner.y, max_corner.z)),
+            mathutils.Vector((min_corner.x, max_corner.y, min_corner.z)),
+            mathutils.Vector((min_corner.x, max_corner.y, max_corner.z)),
+            mathutils.Vector((max_corner.x, min_corner.y, min_corner.z)),
+            mathutils.Vector((max_corner.x, min_corner.y, max_corner.z)),
+            mathutils.Vector((max_corner.x, max_corner.y, min_corner.z)),
+            mathutils.Vector((max_corner.x, max_corner.y, max_corner.z)),
+        ]
+        
+        aspect_ratio = 800.0 / 600.0
+        max_required_scale = 0.0
+        cameras = []
         first_cam = None
+        
         for cam_name, cam_loc in camera_configs:
             bpy.ops.object.camera_add(location=cam_loc)
             cam_obj = bpy.context.active_object
             cam_obj.name = cam_name
             cam_obj.data.type = 'ORTHO'
-            cam_obj.data.ortho_scale = target_scale
             
             # Add TrackTo Constraint to look at origin
             track_to = cam_obj.constraints.new(type='TRACK_TO')
@@ -750,10 +757,37 @@ def run():
             track_to.track_axis = 'TRACK_NEGATIVE_Z'
             track_to.up_axis = 'UP_Y'
             
-            print(f"Created Isometric Camera '{{cam_name}}' at {{cam_loc}}")
+            cameras.append(cam_obj)
             if not first_cam:
                 first_cam = cam_obj
                 
+        # Update scene to solve constraints and calculate camera world matrices
+        bpy.context.view_layer.update()
+        
+        for cam_obj in cameras:
+            inv_matrix = cam_obj.matrix_world.inverted()
+            local_corners = [inv_matrix @ c for c in corners]
+            
+            min_x = min(c.x for c in local_corners)
+            max_x = max(c.x for c in local_corners)
+            min_y = min(c.y for c in local_corners)
+            max_y = max(c.y for c in local_corners)
+            
+            width = max_x - min_x
+            height = max_y - min_y
+            
+            # Since aspect ratio is 800/600 = 1.3333 (> 1), we use the wide screen formula
+            required_scale = max(width, height * aspect_ratio)
+            if required_scale > max_required_scale:
+                max_required_scale = required_scale
+                
+        # Apply the final target scale with 5% safety margin (95% fill)
+        target_scale = max_required_scale / 0.95
+        
+        for cam_obj in cameras:
+            cam_obj.data.ortho_scale = target_scale
+            print(f"Set target scale for {{cam_obj.name}} to {{target_scale}}")
+            
         # Set the first camera as active
         bpy.context.scene.camera = first_cam
 
@@ -838,9 +872,6 @@ def run():
         except Exception as e:
             print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 
-    else:
-        print("No mesh objects found to center.")
-
         # Configure Viewport Settings (Rendered Shading, Camera View, Orthographic)
         print("Configuring Viewport Settings (Rendered Shading, Camera View)...")
         try:
@@ -854,8 +885,54 @@ def run():
                             if space.type == 'VIEW_3D':
                                 space.shading.type = 'RENDERED'
                                 space.region_3d.view_perspective = 'CAMERA'
+                                
+            # Create autoplay script to force Rendered shading when opened in Blender GUI
+            autoplay_script = bpy.data.texts.new(name="autoplay.py")
+            autoplay_script.from_string('''import bpy
+for screen in bpy.data.screens:
+    for area in screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    space.shading.type = 'RENDERED'
+                    space.region_3d.view_perspective = 'CAMERA'
+''')
+            autoplay_script.use_module = True
+            print("Created autoplay.py to force Rendered viewport shading on load.")
         except Exception as viewport_err:
             print(f"Warning: Could not configure viewport settings: {{viewport_err}}")
+
+    else:
+        print("No mesh objects found to center.")
+
+    # Apply "Shade Auto Smooth" to each mesh object in Object Mode
+    print("Applying Shade Auto Smooth to all mesh objects...")
+    try:
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='OBJECT')
+            
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                # Deselect all, then select the object and make it active
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+                
+                try:
+                    # Blender 4.0+ (where shade_auto_smooth operator is available)
+                    bpy.ops.object.shade_auto_smooth()
+                except AttributeError:
+                    try:
+                        # Legacy approach for Blender 3.x and earlier
+                        bpy.ops.object.shade_smooth()
+                        obj.data.use_auto_smooth = True
+                        obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
+                    except Exception as legacy_err:
+                        print("Could not apply auto smooth to", obj.name, ":", legacy_err)
+                except Exception as err:
+                    print("Could not apply auto smooth to", obj.name, ":", err)
+    except Exception as outer_err:
+        print("Error during Auto Smooth application:", outer_err)
 
     # Save the file
     bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}")
