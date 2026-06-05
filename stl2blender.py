@@ -982,7 +982,7 @@ for screen in bpy.data.screens:
         print("Error during Auto Smooth application:", outer_err)
 
     # Save the file
-    bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}")
+    bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}", relative_remap=False)
 
 if __name__ == "__main__":
     run()
