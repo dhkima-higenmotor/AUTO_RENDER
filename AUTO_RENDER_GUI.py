@@ -76,6 +76,9 @@ class AutoRenderApp:
         btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=2, fg="red")
         btn_exit.pack(side="right", padx=5)
         
+        btn_help = tk.Button(frame_actions, text="HELP", command=self.open_help, width=10, height=2)
+        btn_help.pack(side="right", padx=5)
+        
         # 3. Log Area
         frame_log = tk.LabelFrame(self.root, text="Output Log", padx=10, pady=10)
         frame_log.pack(fill="both", expand=True, padx=10, pady=5)
@@ -87,6 +90,10 @@ class AutoRenderApp:
 
     def log(self, message, is_error=False):
         self.log_queue.put((message, is_error))
+
+    def open_help(self):
+        import webbrowser
+        webbrowser.open("https://codeberg.org/dymaxionkim/AUTO_RENDER")
 
     def process_log_queue(self):
         try:
