@@ -19,7 +19,7 @@ class AutoRenderApp:
         self.root = root
         self.root.option_add("*Font", "TkDefaultFont")
         self.root.title("Auto Render GUI")
-        self.root.geometry("800x560")
+        self.root.geometry("1000x600")
         
         # Variables
         self.selected_file_path = tk.StringVar()
@@ -40,7 +40,7 @@ class AutoRenderApp:
         frame_file = tk.LabelFrame(self.root, text="Target File", padx=10, pady=10)
         frame_file.pack(fill="x", padx=10, pady=5)
         
-        lbl_file = tk.Label(frame_file, textvariable=self.selected_file_path, fg="blue", wraplength=550)
+        lbl_file = tk.Label(frame_file, textvariable=self.selected_file_path, fg="blue", wraplength=800, anchor="w")
         lbl_file.pack(side="left", fill="x", expand=True)
         
         btn_browse = tk.Button(frame_file, text="Choose SLDASM", command=self.choose_file)
@@ -50,7 +50,7 @@ class AutoRenderApp:
         frame_blend = tk.LabelFrame(self.root, text="blend File", padx=10, pady=10)
         frame_blend.pack(fill="x", padx=10, pady=5)
         
-        lbl_blend = tk.Label(frame_blend, textvariable=self.selected_blend_path, fg="blue", wraplength=550)
+        lbl_blend = tk.Label(frame_blend, textvariable=self.selected_blend_path, fg="blue", wraplength=800, anchor="w")
         lbl_blend.pack(side="left", fill="x", expand=True)
         
         btn_browse_blend = tk.Button(frame_blend, text="Choose BLEND", command=self.choose_blend_file)
