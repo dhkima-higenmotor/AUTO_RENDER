@@ -948,16 +948,22 @@ for screen in bpy.data.screens:
                         print("Could not apply shade flat to", obj.name, ":", flat_err)
                 else:
                     try:
-                        # Blender 4.0+ (where shade_auto_smooth operator is available)
-                        bpy.ops.object.shade_auto_smooth()
+                        # Blender 4.1+ (where shade_smooth_by_angle is available)
+                        bpy.ops.object.shade_smooth_by_angle(angle=0.523599)
                     except AttributeError:
                         try:
-                            # Legacy approach for Blender 3.x and earlier
-                            bpy.ops.object.shade_smooth()
-                            obj.data.use_auto_smooth = True
-                            obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
-                        except Exception as legacy_err:
-                            print("Could not apply auto smooth to", obj.name, ":", legacy_err)
+                            # Blender 4.0 (where shade_auto_smooth is available)
+                            bpy.ops.object.shade_auto_smooth()
+                        except AttributeError:
+                            try:
+                                # Legacy approach for Blender 3.x and earlier
+                                bpy.ops.object.shade_smooth()
+                                obj.data.use_auto_smooth = True
+                                obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
+                            except Exception as legacy_err:
+                                print("Could not apply auto smooth to", obj.name, ":", legacy_err)
+                        except Exception as err_4_0:
+                            print("Could not apply auto smooth to", obj.name, ":", err_4_0)
                     except Exception as err:
                         print("Could not apply auto smooth to", obj.name, ":", err)
     except Exception as outer_err:
