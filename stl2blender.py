@@ -175,11 +175,12 @@ def run():
         if not mat:
             mat = bpy.data.materials.new(name=name)
         mat.diffuse_color = diffuse_color + (1.0,) if len(diffuse_color) == 3 else diffuse_color
-        if hasattr(mat, 'use_nodes') and not mat.use_nodes:
-            try:
-                mat.use_nodes = True
-            except:
-                pass
+        if bpy.app.version < (5, 0, 0):
+            if hasattr(mat, 'use_nodes') and not mat.use_nodes:
+                try:
+                    mat.use_nodes = True
+                except:
+                    pass
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
         nodes.clear()
@@ -391,7 +392,8 @@ def run():
                 if not world:
                     world = bpy.data.worlds.new("World")
                     bpy.context.scene.world = world
-                world.use_nodes = True
+                if bpy.app.version < (5, 0, 0):
+                    world.use_nodes = True
                 nodes = world.node_tree.nodes
                 links = world.node_tree.links
                 nodes.clear()
@@ -474,7 +476,8 @@ def run():
         if not world:
             world = bpy.data.worlds.new("World_White")
             bpy.context.scene.world = world
-        world.use_nodes = True
+        if bpy.app.version < (5, 0, 0):
+            world.use_nodes = True
         nodes = world.node_tree.nodes
         links = world.node_tree.links
         nodes.clear()
@@ -660,11 +663,12 @@ def run():
             mat = bpy.data.materials.new(name=mat_name)
             
         mat.diffuse_color = (0.1, 0.1, 0.1, 1.0)
-        if hasattr(mat, 'use_nodes') and not mat.use_nodes:
-            try:
-                mat.use_nodes = True
-            except:
-                pass
+        if bpy.app.version < (5, 0, 0):
+            if hasattr(mat, 'use_nodes') and not mat.use_nodes:
+                try:
+                    mat.use_nodes = True
+                except:
+                    pass
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
         nodes.clear()

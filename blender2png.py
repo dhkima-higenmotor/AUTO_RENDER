@@ -69,11 +69,12 @@ world = bpy.context.scene.world
 if not world:
     world = bpy.data.worlds.new("World_White")
     bpy.context.scene.world = world
-if hasattr(world, 'use_nodes') and not world.use_nodes:
-    try:
-        world.use_nodes = True
-    except:
-        pass
+if bpy.app.version < (5, 0, 0):
+    if hasattr(world, 'use_nodes') and not world.use_nodes:
+        try:
+            world.use_nodes = True
+        except:
+            pass
 bg_node = world.node_tree.nodes.get("Background")
 if bg_node:
     bg_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
