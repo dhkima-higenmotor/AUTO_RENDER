@@ -211,6 +211,7 @@ def run():
     mat_green_plastic = get_or_create_material("Mat_Green_Plastic", (0.1, 0.6, 0.2), 0.0, 0.4)
     mat_nickel = get_or_create_material("Mat_Nickel", (0.66, 0.60, 0.54), 1.0, 0.25)
     mat_aluminium = get_or_create_material("Mat_Aluminium", (0.91, 0.92, 0.92), 1.0, 0.3)
+    mat_brass = get_or_create_material("Mat_Brass", (0.88, 0.72, 0.38), 1.0, 0.2)
 
     def load_blenderkit_material_cached(asset_ids):
         import os
@@ -496,8 +497,18 @@ def run():
             assigned_mat = None
             asset_ids = []
             
+            # Rule 0a: AP-, BP-, PCB, CONNECTOR -> Green Plastic
+            if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector"]):
+                assigned_mat = mat_green_plastic
+                asset_ids = ["387e8822-6486-473d-92ff-3a91f426dd64"]
+
+            # Rule 0b: HEX_POST -> Brass
+            elif "hex_post" in name_lower:
+                assigned_mat = mat_brass
+                asset_ids = ["f0c815ea-41ce-448e-ade1-8bcf1beebd3e", "e7be890c-f95e-43eb-9686-6a1e09e25aa4"]
+
             # Rule 1: Brushed Nickel (Screws, Bolts, Keys, etc.)
-            if any(hw in name_lower for hw in hw_keywords):
+            elif any(hw in name_lower for hw in hw_keywords):
                 assigned_mat = mat_brushed_nickel
                 asset_ids = ["b058fc10-bd2a-4cb5-8e05-f330fad99101"]
                 
@@ -550,6 +561,9 @@ def run():
         if "stator" in name_lower and ("coil" in name_lower or "core" in name_lower or "bobbin" in name_lower):
             continue
         if "rotor" in name_lower and "magnet" in name_lower:
+            continue
+        # Filter out PCBs, connectors, plates, and hex posts
+        if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector", "hex_post"]):
             continue
         candidate_objs.append(obj)
             
@@ -918,19 +932,34 @@ for screen in bpy.data.screens:
                 obj.select_set(True)
                 bpy.context.view_layer.objects.active = obj
                 
-                try:
-                    # Blender 4.0+ (where shade_auto_smooth operator is available)
-                    bpy.ops.object.shade_auto_smooth()
-                except AttributeError:
+                # Check if the object has a "green plastic" material
+                is_green_plastic = False
+                if obj.data.materials:
+                    for mat in obj.data.materials:
+                        if mat and "green" in mat.name.lower() and "plastic" in mat.name.lower():
+                            is_green_plastic = True
+                            break
+                
+                if is_green_plastic:
                     try:
-                        # Legacy approach for Blender 3.x and earlier
-                        bpy.ops.object.shade_smooth()
-                        obj.data.use_auto_smooth = True
-                        obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
-                    except Exception as legacy_err:
-                        print("Could not apply auto smooth to", obj.name, ":", legacy_err)
-                except Exception as err:
-                    print("Could not apply auto smooth to", obj.name, ":", err)
+                        bpy.ops.object.shade_flat()
+                        print("Applied Shade Flat to", obj.name, "(green plastic)")
+                    except Exception as flat_err:
+                        print("Could not apply shade flat to", obj.name, ":", flat_err)
+                else:
+                    try:
+                        # Blender 4.0+ (where shade_auto_smooth operator is available)
+                        bpy.ops.object.shade_auto_smooth()
+                    except AttributeError:
+                        try:
+                            # Legacy approach for Blender 3.x and earlier
+                            bpy.ops.object.shade_smooth()
+                            obj.data.use_auto_smooth = True
+                            obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
+                        except Exception as legacy_err:
+                            print("Could not apply auto smooth to", obj.name, ":", legacy_err)
+                    except Exception as err:
+                        print("Could not apply auto smooth to", obj.name, ":", err)
     except Exception as outer_err:
         print("Error during Auto Smooth application:", outer_err)
 

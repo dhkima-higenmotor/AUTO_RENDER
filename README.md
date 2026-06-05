@@ -14,7 +14,7 @@
 ## ✨ 핵심 기능 요약
 
 * **4방향 Isometric 카메라 지원**: 피사체를 비스듬히 내려다보는 4가지 조감도 방향의 카메라(`Camera_ISO_FR`, `Camera_ISO_FL`, `Camera_ISO_BR`, `Camera_ISO_BL`)를 자동 배치하며, **생성된 blend 파일을 열었을 때 자동으로 정사뷰(Orthographic) 쿼터뷰(Isometric FR) 카메라 화면으로 정렬 및 최적 크기로 핏(Fit)되어 즉시 확인 가능합니다.**
-* **자동 쉐이드 자동 스무스(Shade Auto Smooth) 부여**: 가져온 모든 3D 부품(Mesh)에 대해 Blender 버전에 맞게 자동으로 "쉐이드 자동 스무스(Shade Auto Smooth / Smooth by Angle)" 처리를 적용하여 부드러운 곡면과 선명한 모서리를 표현합니다.
+* **자동 쉐이드 자동 스무스(Shade Auto Smooth) 및 쉐이드 플랫(Shade Flat) 부여**: 가져온 모든 3D 부품(Mesh)에 대해 Blender 버전에 맞게 자동으로 "쉐이드 자동 스무스" 처리를 적용합니다. **단, "Green Plastic" 재질이 적용된 회로 기판 등의 부품은 정교한 렌더링 품질을 보장하기 위해 자동으로 "쉐이드 플랫(Shade Flat)"을 부여합니다.**
 * **이름 기반 스마트 재질 매핑**: 하드코딩된 색상 정보 대신 부품명을 기반으로 질감과 반사율이 가미된 정밀한 스튜디오 금속/플라스틱 재질을 자동 부여합니다.
 * **프로 스튜디오 조명**: 피사체의 크기에 알맞은 광량(Energy)과 크기를 가진 3점 Area 조명(Key, Fill, Rim)을 카메라 앵글에 맞춰 자동 생성합니다.
 * **Cycles GPU 고품질 렌더링 및 디노이즈**: Cycles 렌더 엔진 및 GPU 연산을 활용하며, 뷰포트 최대 64 샘플 및 렌더 최대 512 샘플링과 디노이즈(Denoise)를 기본 적용해 깨끗하고 부드러운 고품질 이미지를 빠르게 얻을 수 있습니다.
@@ -71,15 +71,17 @@
   > **BlenderKit 기반 스마트 재질 매핑**: 부품 파일명에 포함된 단어를 스캔하여 **BlenderKit**의 고품질 재질을 자동으로 매핑합니다. (인터넷 미연결 시 로컬 캐시에서 불러오며, 실패 시 기본 절차적 재질로 폴백됩니다.)
   > * `screw`, `bolt`, `pin`, `washer` 등 🔩 ➡️ **Brushed Nickel** (브러시드 니켈, Asset ID: `b058fc10-bd2a-4cb5-8e05-f330fad99101`)
   > * `bearing` ⚙️ ➡️ **Stainless Steel** (스테인리스 스틸, Asset ID: `79540f1a-c977-436f-b949-d9a2aa4c44a1`)
+  > * `ap-`, `bp-`, `pcb`, `connector` ➡️ **Green Plastic** (녹색 플라스틱, Asset ID: `387e8822-6486-473d-92ff-3a91f426dd64` - **쉐이드 플랫 적용**)
+  > * `hex_post` ➡️ **Brass** (황동, Asset ID: `f0c815ea-41ce-448e-ade1-8bcf1beebd3e` / `e7be890c-f95e-43eb-9686-6a1e09e25aa4`)
   > * `stator` + `coil` ➡️ **Copper** (구리 코일, Asset ID: `b19cef5d-04f7-4569-b53f-8c3475b2526d`)
   > * `stator` + `core` ➡️ **Carbon Steel** (탄소강, Asset ID: `58281db0-4437-4069-b925-5a8ab1c32197`)
-  > * `stator` + `bobbin` ➡️ **Green Plastic** (녹색 플라스틱, Asset ID: `387e8822-6486-473d-92ff-3a91f426dd64`)
+  > * `stator` + `bobbin` ➡️ **Green Plastic** (녹색 플라스틱, Asset ID: `387e8822-6486-473d-92ff-3a91f426dd64` - **쉐이드 플랫 적용**)
   > * `rotor` + `magnet` ➡️ **Brushed Nickel** (브러시드 니켈, Asset ID: `b058fc10-bd2a-4cb5-8e05-f330fad99101`)
   > * `housing`, `case`, `cover` 등 외관 부품 ➡️ **Pearl Black Plastic** (펄 블랙 플라스틱, Asset ID: `386d3d08-9144-4145-881e-4b2d25c8202e`)
   > * 기타 일반 부품 ➡️ **Aluminium Sand** (알루미늄 샌드, Asset ID: `8e58e654-b722-49b7-aa44-e24210d5eede`)
 * > [!TIP]
   > **BlenderKit HDRI 자동 매핑**: BlenderKit의 무료 Office HDRi 배경 이미지(예: `Office` 이름으로 된 HDRi)를 환경 텍스처로 자동 적용하여 현실적인 반사와 라이팅 환경을 조성합니다.
-* 4방향 Isometric 카메라와 3점 스튜디오 조명이 배치되고, 모든 부품에 **쉐이드 자동 스무스(Shade Auto Smooth)**가 차례대로 적용됩니다. 씬 배치 완료 후에는 **정사뷰(Orthographic) 및 쿼터뷰 카메라 각도로 뷰포트가 자동 정렬 및 핏(Fit)**됩니다. 모든 작업이 끝나면 `[어셈블리명]__BLENDER` 폴더 내에 `[어셈블리명].blend` 파일이 생성됩니다.
+* 4방향 Isometric 카메라와 3점 스튜디오 조명이 배치되고, 각 부품의 재질에 맞춰 **쉐이드 자동 스무스(Shade Auto Smooth)** 또는 **쉐이드 플랫(Shade Flat)**이 차례대로 적용됩니다. 씬 배치 완료 후에는 **정사뷰(Orthographic) 및 쿼터뷰 카메라 각도로 뷰포트가 자동 정렬 및 핏(Fit)**됩니다. 모든 작업이 끝나면 `[어셈블리명]__BLENDER` 폴더 내에 `[어셈블리명].blend` 파일이 생성됩니다.
 * *(변환이 성공하면 임시로 생성되었던 `__STL` 폴더는 공간 확보를 위해 자동으로 안전하게 삭제됩니다.)*
 
 #### **Step 5: 씬 최종 확인 및 편집 (선택 사항 - `Open BLEND`)**
