@@ -19,7 +19,7 @@ class AutoRenderApp:
         self.root = root
         self.root.option_add("*Font", "TkDefaultFont")
         self.root.title("Auto Render GUI")
-        self.root.geometry("1000x600")
+        self.root.geometry("1000x520")
         
         # Variables
         self.selected_file_path = tk.StringVar()
@@ -37,8 +37,8 @@ class AutoRenderApp:
 
     def setup_ui(self):
         # 1. File Selection Frame
-        frame_file = tk.LabelFrame(self.root, text="Target File", padx=10, pady=10)
-        frame_file.pack(fill="x", padx=10, pady=5)
+        frame_file = tk.LabelFrame(self.root, text="Target File", padx=8, pady=4)
+        frame_file.pack(fill="x", padx=10, pady=2)
         
         lbl_file = tk.Label(frame_file, textvariable=self.selected_file_path, fg="blue", wraplength=800, anchor="w")
         lbl_file.pack(side="left", fill="x", expand=True)
@@ -47,8 +47,8 @@ class AutoRenderApp:
         btn_browse.pack(side="right")
 
         # 1.5. Blend File Selection Frame
-        frame_blend = tk.LabelFrame(self.root, text="blend File", padx=10, pady=10)
-        frame_blend.pack(fill="x", padx=10, pady=5)
+        frame_blend = tk.LabelFrame(self.root, text="blend File", padx=8, pady=4)
+        frame_blend.pack(fill="x", padx=10, pady=2)
         
         lbl_blend = tk.Label(frame_blend, textvariable=self.selected_blend_path, fg="blue", wraplength=800, anchor="w")
         lbl_blend.pack(side="left", fill="x", expand=True)
@@ -57,31 +57,34 @@ class AutoRenderApp:
         btn_browse_blend.pack(side="right")
         
         # 2. Action Buttons Frame
-        frame_actions = tk.Frame(self.root, padx=10, pady=10)
-        frame_actions.pack(fill="x", padx=10)
+        frame_actions = tk.Frame(self.root, padx=10, pady=4)
+        frame_actions.pack(fill="x", padx=10, pady=2)
         
-        self.btn_stl = tk.Button(frame_actions, text="Make STL", command=self.run_make_stl, width=15, height=2, state="disabled")
-        self.btn_stl.pack(side="left", padx=5)
+        self.btn_stl = tk.Button(frame_actions, text="Make STL", command=self.run_make_stl, width=15, height=1, state="disabled")
+        self.btn_stl.pack(side="left", padx=4)
         
-        self.btn_blend = tk.Button(frame_actions, text="Make BLEND", command=self.run_make_blend, width=15, height=2, state="disabled")
-        self.btn_blend.pack(side="left", padx=5)
+        self.btn_blend = tk.Button(frame_actions, text="Make BLEND", command=self.run_make_blend, width=15, height=1, state="disabled")
+        self.btn_blend.pack(side="left", padx=4)
         
-        self.btn_open = tk.Button(frame_actions, text="Open BLEND", command=self.run_open_blend, width=15, height=2, state="disabled")
-        self.btn_open.pack(side="left", padx=5)
+        self.btn_open = tk.Button(frame_actions, text="Open BLEND", command=self.run_open_blend, width=15, height=1, state="disabled")
+        self.btn_open.pack(side="left", padx=4)
         
         # Render UI
-        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=2, state="disabled", bg="#dddddd")
-        self.btn_render.pack(side="left", padx=5)
+        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=1, state="disabled", bg="#dddddd")
+        self.btn_render.pack(side="left", padx=4)
         
-        btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=2, fg="red")
-        btn_exit.pack(side="right", padx=5)
+        self.btn_explode = tk.Button(frame_actions, text="EXPLODE", command=self.run_explode, width=12, height=1, state="disabled", bg="#dddddd")
+        self.btn_explode.pack(side="left", padx=4)
         
-        btn_help = tk.Button(frame_actions, text="HELP", command=self.open_help, width=10, height=2)
-        btn_help.pack(side="right", padx=5)
+        btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=1, fg="red")
+        btn_exit.pack(side="right", padx=4)
+        
+        btn_help = tk.Button(frame_actions, text="HELP", command=self.open_help, width=10, height=1)
+        btn_help.pack(side="right", padx=4)
         
         # 3. Log Area
-        frame_log = tk.LabelFrame(self.root, text="Output Log", padx=10, pady=10)
-        frame_log.pack(fill="both", expand=True, padx=10, pady=5)
+        frame_log = tk.LabelFrame(self.root, text="Output Log", padx=8, pady=4)
+        frame_log.pack(fill="both", expand=True, padx=10, pady=2)
         
         self.txt_log = scrolledtext.ScrolledText(frame_log, state='disabled', height=10, font="TkDefaultFont")
         self.txt_log.pack(fill="both", expand=True)
@@ -147,6 +150,7 @@ class AutoRenderApp:
             self.selected_blend_path.set(blend_file)
             self.btn_open.config(state="normal")
             self.btn_render.config(state="normal")
+            self.btn_explode.config(state="normal")
 
     def run_command(self, cmd):
         """Runs a subprocess and streams output to log."""
@@ -270,6 +274,7 @@ class AutoRenderApp:
             return
              
         self.btn_render.config(state="disabled")
+        self.btn_explode.config(state="disabled")
         self.log("-" * 40)
         self.log(f"Starting Render: {os.path.basename(blend_file)}")
         self.log("Resolution: Keep blend file settings")
@@ -280,6 +285,159 @@ class AutoRenderApp:
         def task():
             self.run_command(cmd)
             self.root.after(0, lambda: self.btn_render.config(state="normal"))
+            self.root.after(0, lambda: self.btn_explode.config(state="normal"))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def run_explode(self):
+        blend_file = self.selected_blend_path.get()
+        if not blend_file or blend_file in ("No blend file selected", "No blend file found"):
+            messagebox.showerror("Error", "No Blender file selected or found.")
+            return
+
+        if not os.path.exists(blend_file):
+            messagebox.showerror("Error", f"Blend file not found:\n{blend_file}")
+            return
+             
+        self.btn_render.config(state="disabled")
+        self.btn_explode.config(state="disabled")
+        self.log("-" * 40)
+        self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)}")
+        
+        # 1. Copy the blend file with _explode suffix
+        explode_blend_file = f"{os.path.splitext(blend_file)[0]}_explode.blend"
+        try:
+            shutil.copy(blend_file, explode_blend_file)
+            self.log(f"Copied blend file to: {os.path.basename(explode_blend_file)}")
+        except Exception as e:
+            self.log(f"Failed to copy blend file: {e}", is_error=True)
+            self.btn_render.config(state="normal")
+            self.btn_explode.config(state="normal")
+            return
+
+        # Get Blender Exe Path
+        blender_exe = "blender"
+        if os.path.exists("blender_exe.txt"):
+            with open("blender_exe.txt", "r") as f:
+                content = f.read().strip()
+                if content: blender_exe = content
+
+        # Create temporary python script for Blender
+        temp_script_path = os.path.join(os.path.dirname(explode_blend_file), "_temp_explode_render.py")
+        temp_script_path = os.path.normpath(temp_script_path)
+        
+        explode_py_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "explode.py"))
+        
+        script_content = f"""
+import bpy
+import os
+import sys
+
+# Configure Render Settings
+bpy.context.scene.render.engine = 'CYCLES'
+bpy.context.scene.cycles.device = 'GPU'
+bpy.context.scene.cycles.samples = 64
+bpy.context.scene.cycles.use_denoising = False
+
+# Configure GPU device type
+try:
+    cycles_pref = bpy.context.preferences.addons['cycles'].preferences
+    for dev_type in ('OPTIX', 'CUDA', 'HIP', 'ONEAPI'):
+        try:
+            cycles_pref.compute_device_type = dev_type
+            cycles_pref.get_devices()
+            has_gpu = False
+            for dev in cycles_pref.devices:
+                if dev.type != 'CPU':
+                    dev.use = True
+                    has_gpu = True
+                else:
+                    dev.use = False
+            if has_gpu:
+                print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
+                break
+        except Exception:
+            pass
+except Exception as e:
+    print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
+
+# Resolution settings (800x600, 100%)
+bpy.context.scene.render.resolution_x = 800
+bpy.context.scene.render.resolution_y = 600
+bpy.context.scene.render.resolution_percentage = 100
+
+# Frame rate: 30 fps
+bpy.context.scene.render.fps = 30
+
+# Output path: same path as blend file, media type: video (FFMPEG, container: MPEG4)
+bpy.context.scene.render.filepath = os.path.dirname(bpy.data.filepath) + "/"
+bpy.context.scene.render.image_settings.media_type = 'VIDEO'
+bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
+bpy.context.scene.render.ffmpeg.format = 'MPEG4'
+
+# Copy explode.py code into Scripting window (Text block) and execute it
+explode_py_path = {repr(explode_py_path)}
+print(f"Loading explode.py script from: {{explode_py_path}}")
+try:
+    with open(explode_py_path, 'r', encoding='utf-8') as f:
+        explode_code = f.read()
+    
+    # Create text block in blender
+    text_block = bpy.data.texts.new(name="explode.py")
+    text_block.from_string(explode_code)
+    
+    # Execute the text block code
+    print("Executing explode.py to generate timeline...")
+    exec(compile(explode_code, 'explode.py', 'exec'), globals())
+    print("explode.py execution complete.")
+except Exception as e:
+    print(f"Error executing explode.py: {{e}}")
+    sys.exit(1)
+
+# Save the blend file
+print(f"Saving modified blend file to: {{bpy.data.filepath}}")
+bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath, relative_remap=False)
+
+# Render animation
+print("Starting animation render...")
+bpy.ops.render.render(animation=True)
+print("Animation render complete!")
+"""
+
+        try:
+            with open(temp_script_path, "w", encoding="utf-8") as f:
+                f.write(script_content)
+        except Exception as e:
+            self.log(f"Error creating temp render script: {e}", is_error=True)
+            self.btn_render.config(state="normal")
+            self.btn_explode.config(state="normal")
+            return
+
+        cmd = [blender_exe, "-b", explode_blend_file, "-P", temp_script_path]
+        
+        def task():
+            ret = self.run_command(cmd)
+            
+            # Clean up temp script
+            if os.path.exists(temp_script_path):
+                try:
+                    os.remove(temp_script_path)
+                except Exception as e:
+                    self.log(f"Warning: Failed to delete temp script: {e}", is_error=True)
+            
+            if ret == 0:
+                self.log("=" * 60)
+                self.log("EXPLODE ANIMATION RENDER COMPLETED SUCCESSFULLY!")
+                self.log(f"Exploded Blender File: {os.path.basename(explode_blend_file)}")
+                self.log(f"Output files saved to: {os.path.dirname(explode_blend_file)}")
+                self.log("=" * 60)
+            else:
+                self.log("=" * 60)
+                self.log("EXPLODE ANIMATION RENDER FAILED!", is_error=True)
+                self.log("=" * 60)
+
+            self.root.after(0, lambda: self.btn_render.config(state="normal"))
+            self.root.after(0, lambda: self.btn_explode.config(state="normal"))
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -324,10 +482,12 @@ class AutoRenderApp:
             self.log(f"Suggested Blend file found: {os.path.basename(blend_file)}")
             self.btn_open.config(state="normal")
             self.btn_render.config(state="normal")
+            self.btn_explode.config(state="normal")
             self.selected_blend_path.set(blend_file)
         else:
             self.btn_open.config(state="disabled")
             self.btn_render.config(state="disabled")
+            self.btn_explode.config(state="disabled")
             self.selected_blend_path.set("No blend file found")
 
 if __name__ == "__main__":
