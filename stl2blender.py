@@ -235,31 +235,39 @@ def run():
             return None
             
         mat = None
-        for asset_id in asset_ids:
-            for root, dirs, files in os.walk(materials_dir):
-                if asset_id in root or any(asset_id in d for d in dirs):
-                    for f in files:
-                        if f.endswith(".blend"):
-                            blend_path = Path(root) / f
-                            try:
-                                with bpy.data.libraries.load(str(blend_path)) as (data_from, data_to):
-                                    if data_from.materials:
-                                        mat_name = data_from.materials[0]
-                                        existing = bpy.data.materials.get(mat_name)
-                                        if existing:
-                                            mat = existing
-                                        else:
-                                            data_to.materials = [mat_name]
-                            except Exception as load_err:
-                                print(f"Error loading from cache: {{load_err}}")
-                            if mat is None:
-                                mat = bpy.data.materials.get(mat_name)
-                            if mat:
-                                break
+        # Turn off relative paths temporarily to prevent cross-drive warnings on Windows (e.g. C: to D:)
+        filepath_prefs = bpy.context.preferences.filepaths
+        orig_relative = filepath_prefs.use_relative_paths
+        filepath_prefs.use_relative_paths = False
+        try:
+            for asset_id in asset_ids:
+                for root, dirs, files in os.walk(materials_dir):
+                    if asset_id in root or any(asset_id in d for d in dirs):
+                        for f in files:
+                            if f.endswith(".blend"):
+                                blend_path = Path(root) / f
+                                mat_name = None
+                                try:
+                                    with bpy.data.libraries.load(str(blend_path), relative=False) as (data_from, data_to):
+                                        if data_from.materials:
+                                            mat_name = data_from.materials[0]
+                                            existing = bpy.data.materials.get(mat_name)
+                                            if existing:
+                                                mat = existing
+                                            else:
+                                                data_to.materials = [mat_name]
+                                except Exception as load_err:
+                                    print(f"Error loading from cache: {{load_err}}")
+                                if mat is None and mat_name is not None:
+                                    mat = bpy.data.materials.get(mat_name)
+                                if mat:
+                                    break
+                    if mat:
+                        break
                 if mat:
                     break
-            if mat:
-                break
+        finally:
+            filepath_prefs.use_relative_paths = orig_relative
         return mat
 
     def apply_blenderkit_material(obj, asset_ids, fallback_material):
