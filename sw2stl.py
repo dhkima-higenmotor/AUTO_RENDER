@@ -206,9 +206,19 @@ def main():
                 if suppressed_comps:
                     print(f"Found {len(suppressed_comps)} suppressed component(s). Deleting from memory...")
                     model.ClearSelection2(True)
+                    sel_data = None
+                    try:
+                        sel_mgr = model.SelectionManager
+                        sel_data = sel_mgr.CreateSelectData() if callable(sel_mgr.CreateSelectData) else sel_mgr.CreateSelectData
+                    except Exception as e:
+                        print(f"Warning: Failed to create SelectData object: {e}")
+
                     for comp in suppressed_comps:
                         try:
-                            comp.Select4(True, None, False)
+                            if sel_data is not None:
+                                comp.Select4(True, sel_data, False)
+                            else:
+                                comp.Select4(True, None, False)
                         except Exception as e:
                             print(f"Warning: Failed to select suppressed component: {e}")
                     

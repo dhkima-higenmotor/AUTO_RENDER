@@ -122,57 +122,109 @@ def run():
                 print(f"DEBUG: Fallback direct set failed: {{e2}}")
                 return False
 
-    # Clear existing objects
-    for obj in list(bpy.data.objects):
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception as remove_err:
-            print(f"Error removing object {{obj.name}}: {{remove_err}}")
-    
-    input_dir = "{input_path_str}"
-    
-    if not os.path.exists(input_dir):
-        print(f"Error: Input directory '{{input_dir}}' not found inside Blender.")
-        return
-
-    # Get STL files and sort them alphabetically
-    stl_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith('.stl')])
-    
-    print(f"Found {{len(stl_files)}} STL files to import.")
-    
-    for f in stl_files:
-        filepath = os.path.join(input_dir, f)
-        print(f"Importing: {{f}}")
+    if not bpy.context.scene.get("stls_imported", False):
+        # Clear existing objects
+        for obj in list(bpy.data.objects):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception as remove_err:
+                print(f"Error removing object {{obj.name}}: {{remove_err}}")
         
-        # Record objects before import to accurately detect new mesh
-        pre_import_objs = set(bpy.data.objects.keys())
+        input_dir = "{input_path_str}"
         
+        if not os.path.exists(input_dir):
+            print(f"Error: Input directory '{{input_dir}}' not found inside Blender.")
+            return
+    
+        # Get STL files and sort them alphabetically
+        stl_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith('.stl')])
+        
+        print(f"Found {{len(stl_files)}} STL files to import.")
+        
+        for f in stl_files:
+            filepath = os.path.join(input_dir, f)
+            print(f"Importing: {{f}}")
+            
+            # Record objects before import to accurately detect new mesh
+            pre_import_objs = set(bpy.data.objects.keys())
+            
+            try:
+                 # Use the new C++ importer (Blender 4.0+)
+                 bpy.ops.wm.stl_import(
+                    filepath=filepath,
+                    global_scale=1.0,
+                    forward_axis='Z',
+                    up_axis='Y'
+                 )
+            except AttributeError:
+                 print(f"Error: Could not find stl_import operator for {{f}}")
+                 continue
+            except TypeError as e:
+                 print(f"Error importing {{f}}: {{e}}")
+                 continue
+    
+            # Detect imported object(s)
+            post_import_objs = set(bpy.data.objects.keys())
+            imported_objs = [bpy.data.objects[name] for name in (post_import_objs - pre_import_objs)]
+            if not imported_objs:
+                 imported_objs = bpy.context.selected_objects
+                 if not imported_objs and bpy.context.active_object:
+                      imported_objs = [bpy.context.active_object]
+                      
+        bpy.context.scene["stls_imported"] = True
+        bpy.context.scene["daemon_wait_start"] = time.time()
+
+    # Ensure BlenderKit is enabled
+    import addon_utils
+    ext_name = None
+    for mod in addon_utils.modules():
+        if "blenderkit" in mod.__name__:
+            ext_name = mod.__name__
+            break
+            
+    if ext_name:
         try:
-             # Use the new C++ importer (Blender 4.0+)
-             bpy.ops.wm.stl_import(
-                filepath=filepath,
-                global_scale=1.0,
-                forward_axis='Z',
-                up_axis='Y'
-             )
-        except AttributeError:
-             print(f"Error: Could not find stl_import operator for {{f}}")
-             continue
-        except TypeError as e:
-             print(f"Error importing {{f}}: {{e}}")
-             continue
+            default_state, loaded_state = addon_utils.check(ext_name)
+            if not loaded_state:
+                addon_utils.enable(ext_name)
+        except Exception as e:
+            print(f"Failed to enable BlenderKit addon: {{e}}")
+            
+    if ext_name and not bpy.context.scene.get("bk_client_ready", False):
+        import socket
+        import sys
+        
+        # Get the port from BlenderKit addon if loaded
+        port = 62485 # default fallback
+        try:
+            for name, module in list(sys.modules.items()):
+                if "blenderkit" in name and hasattr(module, "get_port"):
+                    get_port_func = getattr(module, "get_port")
+                    if callable(get_port_func):
+                        port = int(get_port_func())
+                        break
+        except Exception:
+            pass
+            
+        ready = False
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1) as sock:
+                ready = True
+        except Exception:
+            pass
+            
+        if not ready:
+            elapsed = time.time() - bpy.context.scene.get("daemon_wait_start", time.time())
+            if elapsed > 20.0:
+                print("Warning: BlenderKit client daemon did not respond in 20 seconds. Proceeding anyway.")
+                bpy.context.scene["bk_client_ready"] = True
+            else:
+                print(f"Waiting for BlenderKit client daemon on port {{port}} to become ready... ({{elapsed:.1f}}s elapsed)")
+                return 0.5
+        else:
+            print("BlenderKit client daemon is ready!")
+            bpy.context.scene["bk_client_ready"] = True
 
-        # Detect imported object(s)
-        post_import_objs = set(bpy.data.objects.keys())
-        imported_objs = [bpy.data.objects[name] for name in (post_import_objs - pre_import_objs)]
-        if not imported_objs:
-             imported_objs = bpy.context.selected_objects
-             if not imported_objs and bpy.context.active_object:
-                  imported_objs = [bpy.context.active_object]
-
-
-
-    # 4.5. Special Material Override & Default Material Assignment (OUTSIDE the STL import loop)
     print("Applying smart material assignment based on component names...")
     
     # Define helper to create/retrieve materials with proper properties (fallback)
@@ -1023,71 +1075,102 @@ for screen in bpy.data.screens:
         for item in pending_downloads:
             try:
                 if item['type'] == 'material':
-                    mat = load_blenderkit_material_cached(item['asset_ids'])
-                    if mat:
-                        obj = bpy.data.objects.get(item['obj_name'])
-                        if obj:
-                            obj.data.materials.clear()
-                            obj.data.materials.append(mat)
-                            if hasattr(obj.data, "polygons"):
-                                for poly in obj.data.polygons:
-                                    poly.material_index = 0
-                            print(f"Polling: Applied downloaded material '{{mat.name}}' to '{{obj.name}}'")
-                    else:
+                    obj = bpy.data.objects.get(item['obj_name'])
+                    downloaded_and_applied = False
+                    
+                    # 1. Check if the object has already been assigned a non-fallback material (applied directly by BlenderKit)
+                    if obj and obj.data.materials:
+                        for m in obj.data.materials:
+                            fallback_mat = item.get('fallback')
+                            if m and (not fallback_mat or m.name != fallback_mat.name):
+                                downloaded_and_applied = True
+                                print(f"Polling: Detected BlenderKit applied material '{{m.name}}' on '{{obj.name}}' directly.")
+                                break
+                                
+                    # 2. If not detected directly on the object, check local cache
+                    if not downloaded_and_applied:
+                        mat = load_blenderkit_material_cached(item['asset_ids'])
+                        if mat:
+                            if obj:
+                                obj.data.materials.clear()
+                                obj.data.materials.append(mat)
+                                if hasattr(obj.data, "polygons"):
+                                    for poly in obj.data.polygons:
+                                        poly.material_index = 0
+                                print(f"Polling: Applied downloaded material '{{mat.name}}' to '{{obj.name}}' from cache.")
+                            downloaded_and_applied = True
+                            
+                    if not downloaded_and_applied:
                         still_pending.append(item)
+                        
                 elif item['type'] == 'hdri':
-                    global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
-                    try:
-                        for addon_name in bpy.context.preferences.addons.keys():
-                            if "blenderkit" in addon_name:
-                                prefs = bpy.context.preferences.addons[addon_name].preferences
-                                if hasattr(prefs, "global_dir") and prefs.global_dir:
-                                    global_dir = Path(prefs.global_dir)
-                                    break
-                    except Exception:
-                        pass
-                    hdrs_dir = global_dir / "hdrs"
-                    image_path = None
-                    if hdrs_dir.exists():
-                        for asset_id in item['asset_ids']:
-                            for root, dirs, files in os.walk(hdrs_dir):
-                                if asset_id in root or any(asset_id in d for d in dirs):
-                                    for f in files:
-                                        if f.lower().endswith((".exr", ".hdr")):
-                                            image_path = Path(root) / f
-                                            break
+                    downloaded_and_applied = False
+                    
+                    # 1. Check if the World background node tree already has an environment texture (applied directly by BlenderKit)
+                    world = bpy.context.scene.world
+                    if world and world.use_nodes:
+                        for node in world.node_tree.nodes:
+                            if node.type == 'TEX_ENVIRONMENT' and node.image:
+                                downloaded_and_applied = True
+                                print(f"Polling: Detected BlenderKit applied HDRI background '{{node.image.name}}' directly.")
+                                break
+                                
+                    # 2. If not detected directly, check local cache
+                    if not downloaded_and_applied:
+                        global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
+                        try:
+                            for addon_name in bpy.context.preferences.addons.keys():
+                                if "blenderkit" in addon_name:
+                                    prefs = bpy.context.preferences.addons[addon_name].preferences
+                                    if hasattr(prefs, "global_dir") and prefs.global_dir:
+                                        global_dir = Path(prefs.global_dir)
+                                        break
+                        except Exception:
+                            pass
+                        hdrs_dir = global_dir / "hdrs"
+                        image_path = None
+                        if hdrs_dir.exists():
+                            for asset_id in item['asset_ids']:
+                                for root, dirs, files in os.walk(hdrs_dir):
+                                    if asset_id in root or any(asset_id in d for d in dirs):
+                                        for f in files:
+                                            if f.lower().endswith((".exr", ".hdr")):
+                                                image_path = Path(root) / f
+                                                break
+                                    if image_path:
+                                        break
                                 if image_path:
                                     break
-                            if image_path:
-                                break
-                    if image_path:
-                        try:
-                            img = bpy.data.images.load(str(image_path))
-                            world = bpy.context.scene.world
-                            if not world:
-                                world = bpy.data.worlds.new("World")
-                                bpy.context.scene.world = world
-                            if bpy.app.version < (5, 0, 0):
-                                world.use_nodes = True
-                            nodes = world.node_tree.nodes
-                            links = world.node_tree.links
-                            nodes.clear()
-                            
-                            out_node = nodes.new("ShaderNodeOutputWorld")
-                            out_node.location = (400, 0)
-                            bg_node = nodes.new("ShaderNodeBackground")
-                            bg_node.location = (200, 0)
-                            bg_node.inputs['Strength'].default_value = 1.0
-                            tex_node = nodes.new("ShaderNodeTexEnvironment")
-                            tex_node.location = (0, 0)
-                            tex_node.image = img
-                            
-                            links.new(tex_node.outputs['Color'], bg_node.inputs['Color'])
-                            links.new(bg_node.outputs['Background'], out_node.inputs['Surface'])
-                            print(f"Polling: Applied downloaded BlenderKit HDRI background '{{image_path.name}}'.")
-                        except Exception as load_err:
-                            print(f"Error loading downloaded HDRI: {{load_err}}")
-                    else:
+                        if image_path:
+                            try:
+                                img = bpy.data.images.load(str(image_path))
+                                world = bpy.context.scene.world
+                                if not world:
+                                    world = bpy.data.worlds.new("World")
+                                    bpy.context.scene.world = world
+                                if bpy.app.version < (5, 0, 0):
+                                    world.use_nodes = True
+                                nodes = world.node_tree.nodes
+                                links = world.node_tree.links
+                                nodes.clear()
+                                
+                                out_node = nodes.new("ShaderNodeOutputWorld")
+                                out_node.location = (400, 0)
+                                bg_node = nodes.new("ShaderNodeBackground")
+                                bg_node.location = (200, 0)
+                                bg_node.inputs['Strength'].default_value = 1.0
+                                tex_node = nodes.new("ShaderNodeTexEnvironment")
+                                tex_node.location = (0, 0)
+                                tex_node.image = img
+                                
+                                links.new(tex_node.outputs['Color'], bg_node.inputs['Color'])
+                                links.new(bg_node.outputs['Background'], out_node.inputs['Surface'])
+                                print(f"Polling: Applied downloaded BlenderKit HDRI background '{{image_path.name}}' from cache.")
+                                downloaded_and_applied = True
+                            except Exception as load_err:
+                                print(f"Error loading downloaded HDRI: {{load_err}}")
+                                
+                    if not downloaded_and_applied:
                         still_pending.append(item)
             except Exception as e:
                 print(f"Error checking pending download: {{e}}")
