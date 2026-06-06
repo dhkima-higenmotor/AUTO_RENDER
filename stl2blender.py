@@ -1000,7 +1000,11 @@ for screen in bpy.data.screens:
     bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}", relative_remap=False)
 
 if __name__ == "__main__":
-    run()
+    if bpy.app.background:
+        run()
+    else:
+        # Defer execution to ensure the window manager and context are fully initialized in GUI mode
+        bpy.app.timers.register(run, first_interval=0.5)
 """
 
     try:
