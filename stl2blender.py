@@ -74,8 +74,10 @@ def main():
 import bpy
 import os
 import mathutils
+import time
 
 def run():
+    pending_downloads = []
     # Helper to set socket value robustly across Blender versions and locales
     def set_socket(node, name, value):
         if not node: return False
@@ -275,8 +277,11 @@ def run():
         return mat
 
     def apply_blenderkit_material(obj, asset_ids, fallback_material):
+        nonlocal pending_downloads
         import os
         from pathlib import Path
+        import urllib.request
+        import json
         import bpy
         
         # 1. Try to load from cache first
@@ -290,17 +295,81 @@ def run():
             print(f"Applied BlenderKit material '{{mat.name}}' from cache to '{{obj.name}}'")
             return
 
-        # 2. Skip download during script execution and apply procedural fallback
-        print(f"BlenderKit material with ID(s) {{asset_ids}} not found in cache. Skipping download during script execution.")
+        # 2. Trigger background download
+        ext_name = None
+        import addon_utils
+        for mod in addon_utils.modules():
+            if "blenderkit" in mod.__name__:
+                ext_name = mod.__name__
+                break
+                
+        if ext_name:
+            try:
+                default_state, loaded_state = addon_utils.check(ext_name)
+                if not loaded_state:
+                    addon_utils.enable(ext_name)
+                
+                # Fetch details, clean avatar fields, inject and trigger
+                asset_id = asset_ids[0]
+                url = f"https://www.blenderkit.com/api/v1/assets/{{asset_id}}/"
+                req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
+                with urllib.request.urlopen(req) as response:
+                    asset_data = json.loads(response.read().decode())
+                
+                if "author" in asset_data:
+                    author = asset_data["author"]
+                    for k in list(author.keys()):
+                        if k.startswith("avatar") and k != "avatar128":
+                            author.pop(k, None)
+                
+                import sys
+                search_module = None
+                for name, module in sys.modules.items():
+                    if "blenderkit" in name and name.endswith(".search"):
+                        search_module = module
+                        break
+                        
+                if search_module:
+                    try:
+                        parsed_asset_data = search_module.parse_result(asset_data)
+                    except Exception:
+                        parsed_asset_data = asset_data
+                        if "assetBaseId" not in parsed_asset_data:
+                            parsed_asset_data["assetBaseId"] = asset_id
+                        if "assetType" not in parsed_asset_data:
+                            parsed_asset_data["assetType"] = "material"
+                    
+                    history_step = search_module.get_active_history_step()
+                    history_step["search_results"] = [parsed_asset_data]
+                    
+                    # Run download operator
+                    bpy.ops.scene.blenderkit_download(
+                        asset_index=0,
+                        target_object=obj.name
+                    )
+                    print(f"Triggered background download for '{{asset_id}}' on '{{obj.name}}'")
+                    pending_downloads.append({{
+                        'type': 'material',
+                        'obj_name': obj.name,
+                        'asset_ids': asset_ids,
+                        'fallback': fallback_material
+                    }})
+            except Exception as download_err:
+                print(f"Failed to trigger download for '{{asset_ids}}': {{download_err}}")
+        else:
+            print("BlenderKit addon is not installed or enabled.")
+
+        # Apply fallback material immediately as temporary placeholder
         if fallback_material:
             obj.data.materials.clear()
             obj.data.materials.append(fallback_material)
             if hasattr(obj.data, "polygons"):
                 for poly in obj.data.polygons:
                     poly.material_index = 0
-            print(f"Applied procedural fallback material '{{fallback_material.name}}' to '{{obj.name}}'")
+            print(f"Applied procedural fallback material '{{fallback_material.name}}' to '{{obj.name}}' as placeholder.")
 
     def apply_blenderkit_hdri(asset_ids):
+        nonlocal pending_downloads
         import os
         from pathlib import Path
         import bpy
@@ -419,6 +488,10 @@ def run():
                             asset_index=0
                         )
                         print(f"Triggered background HDRI download for '{{asset_id}}'")
+                        pending_downloads.append({{
+                            'type': 'hdri',
+                            'asset_ids': asset_ids
+                        }})
                 except Exception as download_err:
                     print(f"Failed to trigger download: {{download_err}}")
             else:
@@ -876,58 +949,164 @@ for screen in bpy.data.screens:
     else:
         print("No mesh objects found to center.")
 
-    # Apply "Shade Auto Smooth" to each mesh object in Object Mode
-    print("Applying Shade Auto Smooth to all mesh objects...")
-    try:
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode='OBJECT')
-            
-        for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                # Deselect all, then select the object and make it active
-                bpy.ops.object.select_all(action='DESELECT')
-                obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj
+    def run_final_setup():
+        # Apply "Shade Auto Smooth" to each mesh object in Object Mode
+        print("Applying Shade Auto Smooth to all mesh objects...")
+        try:
+            if bpy.ops.object.mode_set.poll():
+                bpy.ops.object.mode_set(mode='OBJECT')
                 
-                # Check if the object has a "green plastic" material
-                is_green_plastic = False
-                if obj.data.materials:
-                    for mat in obj.data.materials:
-                        if mat and "green" in mat.name.lower() and "plastic" in mat.name.lower():
-                            is_green_plastic = True
-                            break
-                
-                if is_green_plastic:
-                    try:
-                        bpy.ops.object.shade_flat()
-                        print("Applied Shade Flat to", obj.name, "(green plastic)")
-                    except Exception as flat_err:
-                        print("Could not apply shade flat to", obj.name, ":", flat_err)
-                else:
-                    try:
-                        # Blender 4.1+ (where shade_smooth_by_angle is available)
-                        bpy.ops.object.shade_smooth_by_angle(angle=0.523599)
-                    except AttributeError:
+            for obj in bpy.data.objects:
+                if obj.type == 'MESH':
+                    # Deselect all, then select the object and make it active
+                    bpy.ops.object.select_all(action='DESELECT')
+                    obj.select_set(True)
+                    bpy.context.view_layer.objects.active = obj
+                    
+                    # Check if the object has a "green plastic" material
+                    is_green_plastic = False
+                    if obj.data.materials:
+                        for mat in obj.data.materials:
+                            if mat and "green" in mat.name.lower() and "plastic" in mat.name.lower():
+                                is_green_plastic = True
+                                break
+                    
+                    if is_green_plastic:
                         try:
-                            # Blender 4.0 (where shade_auto_smooth is available)
-                            bpy.ops.object.shade_auto_smooth()
+                            bpy.ops.object.shade_flat()
+                            print("Applied Shade Flat to", obj.name, "(green plastic)")
+                        except Exception as flat_err:
+                            print("Could not apply shade flat to", obj.name, ":", flat_err)
+                    else:
+                        try:
+                            # Blender 4.1+ (where shade_smooth_by_angle is available)
+                            bpy.ops.object.shade_smooth_by_angle(angle=0.523599)
                         except AttributeError:
                             try:
-                                # Legacy approach for Blender 3.x and earlier
-                                bpy.ops.object.shade_smooth()
-                                obj.data.use_auto_smooth = True
-                                obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
-                            except Exception as legacy_err:
-                                print("Could not apply auto smooth to", obj.name, ":", legacy_err)
-                        except Exception as err_4_0:
-                            print("Could not apply auto smooth to", obj.name, ":", err_4_0)
-                    except Exception as err:
-                        print("Could not apply auto smooth to", obj.name, ":", err)
-    except Exception as outer_err:
-        print("Error during Auto Smooth application:", outer_err)
+                                # Blender 4.0 (where shade_auto_smooth is available)
+                                bpy.ops.object.shade_auto_smooth()
+                            except AttributeError:
+                                try:
+                                    # Legacy approach for Blender 3.x and earlier
+                                    bpy.ops.object.shade_smooth()
+                                    obj.data.use_auto_smooth = True
+                                    obj.data.auto_smooth_angle = 0.523599 # 30 degrees in radians
+                                except Exception as legacy_err:
+                                    print("Could not apply auto smooth to", obj.name, ":", legacy_err)
+                            except Exception as err_4_0:
+                                print("Could not apply auto smooth to", obj.name, ":", err_4_0)
+                        except Exception as err:
+                            print("Could not apply auto smooth to", obj.name, ":", err)
+        except Exception as outer_err:
+            print("Error during Auto Smooth application:", outer_err)
 
-    # Save the file
-    bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}", relative_remap=False)
+        # Save the file
+        bpy.ops.wm.save_as_mainfile(filepath="{blend_file_path_str}", relative_remap=False)
+        print("Blend file saved successfully.")
+        
+        # Quit Blender
+        print("Exiting Blender...")
+        bpy.ops.wm.quit_blender()
+
+    start_time = time.time()
+    
+    def check_downloads():
+        nonlocal pending_downloads
+        elapsed = time.time() - start_time
+        if elapsed > 180.0:
+            print("Timeout waiting for BlenderKit downloads. Proceeding with fallback materials.")
+            pending_downloads.clear()
+            run_final_setup()
+            return None
+            
+        still_pending = []
+        for item in pending_downloads:
+            try:
+                if item['type'] == 'material':
+                    mat = load_blenderkit_material_cached(item['asset_ids'])
+                    if mat:
+                        obj = bpy.data.objects.get(item['obj_name'])
+                        if obj:
+                            obj.data.materials.clear()
+                            obj.data.materials.append(mat)
+                            if hasattr(obj.data, "polygons"):
+                                for poly in obj.data.polygons:
+                                    poly.material_index = 0
+                            print(f"Polling: Applied downloaded material '{{mat.name}}' to '{{obj.name}}'")
+                    else:
+                        still_pending.append(item)
+                elif item['type'] == 'hdri':
+                    global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
+                    try:
+                        for addon_name in bpy.context.preferences.addons.keys():
+                            if "blenderkit" in addon_name:
+                                prefs = bpy.context.preferences.addons[addon_name].preferences
+                                if hasattr(prefs, "global_dir") and prefs.global_dir:
+                                    global_dir = Path(prefs.global_dir)
+                                    break
+                    except Exception:
+                        pass
+                    hdrs_dir = global_dir / "hdrs"
+                    image_path = None
+                    if hdrs_dir.exists():
+                        for asset_id in item['asset_ids']:
+                            for root, dirs, files in os.walk(hdrs_dir):
+                                if asset_id in root or any(asset_id in d for d in dirs):
+                                    for f in files:
+                                        if f.lower().endswith((".exr", ".hdr")):
+                                            image_path = Path(root) / f
+                                            break
+                                if image_path:
+                                    break
+                            if image_path:
+                                break
+                    if image_path:
+                        try:
+                            img = bpy.data.images.load(str(image_path))
+                            world = bpy.context.scene.world
+                            if not world:
+                                world = bpy.data.worlds.new("World")
+                                bpy.context.scene.world = world
+                            if bpy.app.version < (5, 0, 0):
+                                world.use_nodes = True
+                            nodes = world.node_tree.nodes
+                            links = world.node_tree.links
+                            nodes.clear()
+                            
+                            out_node = nodes.new("ShaderNodeOutputWorld")
+                            out_node.location = (400, 0)
+                            bg_node = nodes.new("ShaderNodeBackground")
+                            bg_node.location = (200, 0)
+                            bg_node.inputs['Strength'].default_value = 1.0
+                            tex_node = nodes.new("ShaderNodeTexEnvironment")
+                            tex_node.location = (0, 0)
+                            tex_node.image = img
+                            
+                            links.new(tex_node.outputs['Color'], bg_node.inputs['Color'])
+                            links.new(bg_node.outputs['Background'], out_node.inputs['Surface'])
+                            print(f"Polling: Applied downloaded BlenderKit HDRI background '{{image_path.name}}'.")
+                        except Exception as load_err:
+                            print(f"Error loading downloaded HDRI: {{load_err}}")
+                    else:
+                        still_pending.append(item)
+            except Exception as e:
+                print(f"Error checking pending download: {{e}}")
+                still_pending.append(item)
+                
+        pending_downloads = still_pending
+        if len(pending_downloads) == 0:
+            print("All BlenderKit downloads completed successfully.")
+            run_final_setup()
+            return None
+            
+        print(f"Waiting for {{len(pending_downloads)}} downloads... ({{elapsed:.1f}}s elapsed)")
+        return 2.0
+
+    if not pending_downloads or bpy.app.background:
+        run_final_setup()
+    else:
+        print(f"Waiting for {{len(pending_downloads)}} downloads to complete in background...")
+        bpy.app.timers.register(check_downloads, first_interval=2.0)
 
 if __name__ == "__main__":
     if bpy.app.background:
