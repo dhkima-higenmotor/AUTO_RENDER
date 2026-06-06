@@ -304,6 +304,8 @@ def run():
         import os
         from pathlib import Path
         import bpy
+        import urllib.request
+        import json
 
         # 1. Search local cache first
         global_dir = Path(os.path.expanduser("~")) / "blenderkit_data"
@@ -362,8 +364,67 @@ def run():
             except Exception as load_err:
                 print(f"Error loading cached HDRI: {{load_err}}")
 
-        # 3. If not found in cache, skip download during script execution and apply solid white background
-        print(f"Office HDRI ID(s) {{asset_ids}} not found in cache. Skipping download during script execution.")
+        # 3. If not found in cache, trigger background download
+        if bpy.app.background:
+            print(f"Office HDRI ID(s) {{asset_ids}} not found in cache. Running in background/headless mode, skipping download.")
+        else:
+            print(f"Office HDRI ID(s) {{asset_ids}} not found in cache. Triggering download...")
+            ext_name = None
+            import addon_utils
+            for mod in addon_utils.modules():
+                if "blenderkit" in mod.__name__:
+                    ext_name = mod.__name__
+                    break
+                    
+            if ext_name:
+                try:
+                    default_state, loaded_state = addon_utils.check(ext_name)
+                    if not loaded_state:
+                        addon_utils.enable(ext_name)
+                    
+                    # Fetch details, clean avatar fields, inject and trigger
+                    asset_id = asset_ids[0]
+                    url = f"https://www.blenderkit.com/api/v1/assets/{{asset_id}}/"
+                    req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
+                    with urllib.request.urlopen(req) as response:
+                        asset_data = json.loads(response.read().decode())
+                    
+                    if "author" in asset_data:
+                        author = asset_data["author"]
+                        for k in list(author.keys()):
+                            if k.startswith("avatar") and k != "avatar128":
+                                author.pop(k, None)
+                    
+                    import sys
+                    search_module = None
+                    for name, module in sys.modules.items():
+                        if "blenderkit" in name and name.endswith(".search"):
+                            search_module = module
+                            break
+                            
+                    if search_module:
+                        try:
+                            parsed_asset_data = search_module.parse_result(asset_data)
+                        except Exception:
+                            parsed_asset_data = asset_data
+                            if "assetBaseId" not in parsed_asset_data:
+                                parsed_asset_data["assetBaseId"] = asset_id
+                            if "assetType" not in parsed_asset_data:
+                                parsed_asset_data["assetType"] = "hdr"
+                        
+                        history_step = search_module.get_active_history_step()
+                        history_step["search_results"] = [parsed_asset_data]
+                        
+                        bpy.ops.scene.blenderkit_download(
+                            asset_index=0
+                        )
+                        print(f"Triggered background HDRI download for '{{asset_id}}'")
+                except Exception as download_err:
+                    print(f"Failed to trigger download: {{download_err}}")
+            else:
+                print("BlenderKit addon is not installed or enabled.")
+            
+        # Fallback to white background if download not ready
         world = bpy.context.scene.world
         if not world:
             world = bpy.data.worlds.new("World_White")
