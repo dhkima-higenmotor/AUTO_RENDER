@@ -14,6 +14,135 @@ try:
 except Exception:
     pass
 
+class AxisSelectionDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.result = None
+        
+        self.title("Select Explode Axis")
+        self.geometry("320x180")
+        self.resizable(False, False)
+        
+        # Center the dialog relative to parent
+        self.transient(parent)
+        self.grab_set()
+        
+        # Calculate center position
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        
+        x = parent_x + (parent_w - 320) // 2
+        y = parent_y + (parent_h - 180) // 2
+        self.geometry(f"+{x}+{y}")
+        
+        # UI Elements
+        # Label
+        lbl_msg = tk.Label(self, text="Select the disassembly (explode) axis:", font=("TkDefaultFont", 10, "bold"))
+        lbl_msg.pack(pady=15)
+        
+        # Radiobuttons for X, Y, Z
+        self.axis_var = tk.StringVar(value="Y")
+        
+        frame_radio = tk.Frame(self)
+        frame_radio.pack(pady=10)
+        
+        for axis in ["X", "Y", "Z"]:
+            rb = tk.Radiobutton(frame_radio, text=f"{axis} Axis", variable=self.axis_var, value=axis, font=("TkDefaultFont", 10))
+            rb.pack(side="left", padx=15)
+            
+        # Buttons Frame
+        frame_buttons = tk.Frame(self)
+        frame_buttons.pack(pady=15)
+        
+        btn_ok = tk.Button(frame_buttons, text="OK", width=10, command=self.on_ok, bg="#4CAF50", fg="white", activebackground="#45a049")
+        btn_ok.pack(side="left", padx=10)
+        
+        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=10, command=self.on_cancel)
+        btn_cancel.pack(side="left", padx=10)
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        self.wait_window(self)
+        
+    def on_ok(self):
+        self.result = self.axis_var.get()
+        self.destroy()
+        
+    def on_cancel(self):
+        self.result = None
+        self.destroy()
+
+class DurationSelectionDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.result = None
+        
+        self.title("Select Explode Duration")
+        self.geometry("320x180")
+        self.resizable(False, False)
+        
+        # Center the dialog relative to parent
+        self.transient(parent)
+        self.grab_set()
+        
+        # Calculate center position
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        
+        x = parent_x + (parent_w - 320) // 2
+        y = parent_y + (parent_h - 180) // 2
+        self.geometry(f"+{x}+{y}")
+        
+        # UI Elements
+        lbl_msg = tk.Label(self, text="Set disassembly duration (seconds):", font=("TkDefaultFont", 10, "bold"))
+        lbl_msg.pack(pady=15)
+        
+        # Entry for duration
+        self.duration_var = tk.StringVar(value="20")
+        
+        frame_input = tk.Frame(self)
+        frame_input.pack(pady=5)
+        
+        # Spinbox
+        self.spin = tk.Spinbox(frame_input, from_=1, to=3600, textvariable=self.duration_var, width=10, font=("TkDefaultFont", 10))
+        self.spin.pack(side="left", padx=5)
+        
+        lbl_sec = tk.Label(frame_input, text="seconds", font=("TkDefaultFont", 10))
+        lbl_sec.pack(side="left")
+        
+        # Buttons Frame
+        frame_buttons = tk.Frame(self)
+        frame_buttons.pack(pady=15)
+        
+        btn_ok = tk.Button(frame_buttons, text="OK", width=10, command=self.on_ok, bg="#4CAF50", fg="white", activebackground="#45a049")
+        btn_ok.pack(side="left", padx=10)
+        
+        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=10, command=self.on_cancel)
+        btn_cancel.pack(side="left", padx=10)
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        self.wait_window(self)
+        
+    def on_ok(self):
+        val_str = self.duration_var.get().strip()
+        try:
+            val = int(val_str)
+            if val <= 0:
+                raise ValueError
+            self.result = val
+            self.destroy()
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid positive integer for seconds.")
+        
+    def on_cancel(self):
+        self.result = None
+        self.destroy()
+
 class AutoRenderApp:
     def __init__(self, root):
         self.root = root
@@ -290,6 +419,20 @@ class AutoRenderApp:
         threading.Thread(target=task, daemon=True).start()
 
     def run_explode(self):
+        # 1. Ask user for axis
+        dialog = AxisSelectionDialog(self.root)
+        selected_axis = dialog.result
+        if not selected_axis:
+            self.log("Explode operation cancelled by user.")
+            return
+
+        # 2. Ask user for duration
+        duration_dialog = DurationSelectionDialog(self.root)
+        selected_duration = duration_dialog.result
+        if not selected_duration:
+            self.log("Explode operation cancelled by user.")
+            return
+
         blend_file = self.selected_blend_path.get()
         if not blend_file or blend_file in ("No blend file selected", "No blend file found"):
             messagebox.showerror("Error", "No Blender file selected or found.")
@@ -302,7 +445,7 @@ class AutoRenderApp:
         self.btn_render.config(state="disabled")
         self.btn_explode.config(state="disabled")
         self.log("-" * 40)
-        self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)}")
+        self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)} (Axis: {selected_axis}, Duration: {selected_duration}s)")
         
         # 1. Copy the blend file with _explode suffix
         explode_blend_file = f"{os.path.splitext(blend_file)[0]}_explode.blend"
@@ -332,6 +475,10 @@ class AutoRenderApp:
 import bpy
 import os
 import sys
+
+# Configure selected axis & duration
+os.environ["EXPLODE_AXIS"] = "{selected_axis}"
+os.environ["EXPLODE_DURATION"] = "{selected_duration}"
 
 # Configure Render Settings
 bpy.context.scene.render.engine = 'CYCLES'
