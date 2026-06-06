@@ -121,7 +121,11 @@ def run():
                 return False
 
     # Clear existing objects
-    bpy.ops.wm.read_homefile(use_empty=True)
+    for obj in list(bpy.data.objects):
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception as remove_err:
+            print(f"Error removing object {obj.name}: {remove_err}")
     
     input_dir = "{input_path_str}"
     
