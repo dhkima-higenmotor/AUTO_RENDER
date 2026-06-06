@@ -500,7 +500,7 @@ def run():
         return False
 
     hw_keywords = ["screw", "bolt", "key", "pin", "washer", "nut", "rivet", "나사", "볼트", "핀", "와셔", "너트", "리벳", "키"]
-    bearing_keywords = ["bearing", "베어링"]
+    bearing_keywords = ["bearing", "베어링", "6803zz", "6905zz", "6807zz", "6808zz", "6809zz", "6903zz", "nsk", "rau"]
     
     for obj in bpy.data.objects:
         if obj.type == 'MESH':
@@ -566,7 +566,7 @@ def run():
     for obj in mesh_objs:
         name_lower = obj.name.lower()
         # Filter out hardware
-        if any(hw in name_lower for hw in hw_keywords):
+        if any(hw in name_lower for hw in hw_keywords) or any(brg in name_lower for brg in bearing_keywords):
             continue
         # Filter out motor internals
         if "stator" in name_lower and ("coil" in name_lower or "core" in name_lower or "bobbin" in name_lower):

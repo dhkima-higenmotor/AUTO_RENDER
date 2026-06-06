@@ -70,7 +70,7 @@
 * > [!TIP]
   > **BlenderKit 기반 스마트 재질 매핑**: 부품 파일명에 포함된 단어를 스캔하여 **BlenderKit**의 고품질 재질을 자동으로 매핑합니다. (인터넷 미연결 시 로컬 캐시에서 불러오며, 실패 시 기본 절차적 재질로 폴백됩니다.)
   > * `screw`, `bolt`, `pin`, `washer` 등 🔩 ➡️ **Brushed Nickel** (브러시드 니켈, Asset ID: `b058fc10-bd2a-4cb5-8e05-f330fad99101`)
-  > * `bearing` ⚙️ ➡️ **Stainless Steel** (스테인리스 스틸, Asset ID: `79540f1a-c977-436f-b949-d9a2aa4c44a1`)
+  > * `bearing`, `베어링`, `6803ZZ`, `6905ZZ`, `6807ZZ`, `6808ZZ`, `6809ZZ`, `6903ZZ`, `NSK`, `RAU` 등 ⚙️ ➡️ **Stainless Steel** (스테인리스 스틸, Asset ID: `79540f1a-c977-436f-b949-d9a2aa4c44a1`)
   > * `ap-`, `bp-`, `pcb`, `connector` ➡️ **Green Plastic** (녹색 플라스틱, Asset ID: `387e8822-6486-473d-92ff-3a91f426dd64` - **쉐이드 플랫 적용**)
   > * `hex_post` ➡️ **Brass** (황동, Asset ID: `f0c815ea-41ce-448e-ade1-8bcf1beebd3e` / `e7be890c-f95e-43eb-9686-6a1e09e25aa4`)
   > * `stator` + `coil` ➡️ **Copper** (구리 코일, Asset ID: `b19cef5d-04f7-4569-b53f-8c3475b2526d`)
