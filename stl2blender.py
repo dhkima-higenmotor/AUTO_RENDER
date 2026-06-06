@@ -1012,8 +1012,8 @@ if __name__ == "__main__":
 
     print(f"Created import script: {import_script_path}")
     
-    # 6. Run Blender
-    cmd = [blender_exe, "-b", "-P", str(import_script_path)]
+    # 6. Run Blender (GUI mode to allow BlenderKit daemon to run and download assets)
+    cmd = [blender_exe, "-P", str(import_script_path)]
     
     try:
         print("Running Blender to import STLs...")
