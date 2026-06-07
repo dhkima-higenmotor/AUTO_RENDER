@@ -18,9 +18,10 @@ def get_sorting_key(obj, axis_idx=1):
         return min_coord
     return max_coord
 
-def create_adaptive_bbox_explosion(axis='Y', factor=5.0, total_seconds=20.0):
+def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, total_seconds=20.0):
     """
     axis: Axis along which the explosion happens ('X', 'Y', or 'Z')
+    direction_mode: Direction of explosion ('POS', 'NEG', or 'BOTH')
     factor: Explosion distance multiplier
     total_seconds: Total animation duration in seconds (Default: 20.0s)
     """
@@ -40,21 +41,107 @@ def create_adaptive_bbox_explosion(axis='Y', factor=5.0, total_seconds=20.0):
         if obj.animation_data:
             obj.animation_data_clear()
 
-    # 2. Sort objects using the adaptive bounding box logic
-    # Parts are sorted from the highest/outermost coordinate down to the lowest
-    sorted_objects = sorted(
-        all_objects, 
-        key=lambda o: get_sorting_key(o, axis_idx), 
-        reverse=True
-    )
+    # 2. Calculate global scale of the assembly
+    min_corner = mathutils.Vector((float('inf'), float('inf'), float('inf')))
+    max_corner = mathutils.Vector((float('-inf'), float('-inf'), float('-inf')))
+    for obj in all_objects:
+        matrix_world = obj.matrix_world
+        for corner in obj.bound_box:
+            world_corner = matrix_world @ mathutils.Vector(corner)
+            min_corner.x = min(min_corner.x, world_corner.x)
+            min_corner.y = min(min_corner.y, world_corner.y)
+            min_corner.z = min(min_corner.z, world_corner.z)
+            max_corner.x = max(max_corner.x, world_corner.x)
+            max_corner.y = max(max_corner.y, world_corner.y)
+            max_corner.z = max(max_corner.z, world_corner.z)
+            
+    size_vec = max_corner - min_corner
+    assembly_scale = max(size_vec.x, size_vec.y, size_vec.z)
+    if assembly_scale <= 0.0:
+        assembly_scale = 1.0
 
     # 3. Calculate the global average center to determine the explosion direction
     total_val = sum(obj.location[axis_idx] for obj in all_objects)
     global_center_val = total_val / num_parts
 
-    # 4. Calculate equal frame distribution based on a fixed 20-second duration
+    # 4. Pre-calculate displacements, directions, and animation delay order based on direction_mode
+    # Even the innermost components must move completely off-screen (min_disp = 3.0 * assembly_scale).
+    min_disp = assembly_scale * 3.0
+    max_disp = max(assembly_scale * factor, min_disp + assembly_scale)
+    displacements = {}
+    directions = {}
+    direction_mode = direction_mode.upper()
+    
+    if direction_mode == 'POS':
+        # Unidirectional Positive: All components move positive, sorted lowest to highest coord
+        all_sorted = sorted(all_objects, key=lambda o: get_sorting_key(o, axis_idx), reverse=False)
+        for idx, obj in enumerate(all_sorted):
+            if num_parts <= 1:
+                displacements[obj] = max_disp
+            else:
+                group_factor = idx / (num_parts - 1)
+                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
+            directions[obj] = 1.0
+            
+        # Delay order: outermost first in positive direction (highest coordinate starts first)
+        sorted_objects = sorted(
+            all_objects,
+            key=lambda o: get_sorting_key(o, axis_idx),
+            reverse=True
+        )
+        
+    elif direction_mode == 'NEG':
+        # Unidirectional Negative: All components move negative, sorted highest to lowest coord
+        all_sorted = sorted(all_objects, key=lambda o: get_sorting_key(o, axis_idx), reverse=True)
+        for idx, obj in enumerate(all_sorted):
+            if num_parts <= 1:
+                displacements[obj] = max_disp
+            else:
+                group_factor = idx / (num_parts - 1)
+                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
+            directions[obj] = -1.0
+            
+        # Delay order: outermost first in negative direction (lowest coordinate starts first)
+        sorted_objects = sorted(
+            all_objects,
+            key=lambda o: get_sorting_key(o, axis_idx),
+            reverse=False
+        )
+        
+    else:  # BOTH (bidirectional) mode
+        # Bidirectional: positive components move positive, negative move negative relative to center
+        pos_group = [obj for obj in all_objects if (1.0 if obj.location[axis_idx] >= global_center_val else -1.0) == 1.0]
+        pos_sorted = sorted(pos_group, key=lambda o: get_sorting_key(o, axis_idx), reverse=False)
+        num_pos = len(pos_sorted)
+        for idx, obj in enumerate(pos_sorted):
+            if num_pos <= 1:
+                displacements[obj] = max_disp
+            else:
+                group_factor = idx / (num_pos - 1)
+                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
+            directions[obj] = 1.0
+            
+        neg_group = [obj for obj in all_objects if (1.0 if obj.location[axis_idx] >= global_center_val else -1.0) == -1.0]
+        neg_sorted = sorted(neg_group, key=lambda o: get_sorting_key(o, axis_idx), reverse=True)
+        num_neg = len(neg_sorted)
+        for idx, obj in enumerate(neg_sorted):
+            if num_neg <= 1:
+                displacements[obj] = max_disp
+            else:
+                group_factor = idx / (num_neg - 1)
+                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
+            directions[obj] = -1.0
+            
+        # Delay order: furthest from center (on both sides) starts first to prevent collisions
+        sorted_objects = sorted(
+            all_objects, 
+            key=lambda o: abs(get_sorting_key(o, axis_idx) - global_center_val), 
+            reverse=True
+        )
+
+    # 6. Calculate equal frame distribution based on a fixed total duration
     fps = bpy.context.scene.render.fps  
-    total_frames = int(total_seconds * fps)  # 20s * 30fps = 600 frames
+    total_frames = int(total_seconds * fps)
     
     # Timeline split: 60% for sequential delays, 40% for individual movement duration
     if num_parts > 1:
@@ -67,12 +154,10 @@ def create_adaptive_bbox_explosion(axis='Y', factor=5.0, total_seconds=20.0):
     scene = bpy.context.scene
     current_delay = 0.0  
 
-    # 5. Generate keyframes for sorted objects sequentially
+    # 7. Generate keyframes for sorted objects sequentially
     for obj in sorted_objects:
-        # Determine explosion direction along the chosen axis relative to the global center
-        direction = 1.0 if obj.location[axis_idx] >= global_center_val else -1.0
-        if obj.location[axis_idx] == global_center_val:
-            direction = 1.0
+        # Determine explosion direction along the chosen axis
+        direction = directions.get(obj, 1.0)
 
         # Convert frame values to integers for inserting keyframes
         start_frame = int(1 + current_delay)
@@ -90,7 +175,8 @@ def create_adaptive_bbox_explosion(axis='Y', factor=5.0, total_seconds=20.0):
         scene.frame_set(end_frame)
         
         # Apply displacement along the selected axis
-        obj.location[axis_idx] += direction * factor
+        displacement = displacements.get(obj, max_disp)
+        obj.location[axis_idx] += direction * displacement
         obj.keyframe_insert(data_path="location", index=axis_idx)
         
         # Accumulate delay for the next subsequent part
@@ -107,8 +193,14 @@ def create_adaptive_bbox_explosion(axis='Y', factor=5.0, total_seconds=20.0):
 # Execute the script
 import os
 explode_axis = os.environ.get("EXPLODE_AXIS", "Y")
+explode_dir_mode = os.environ.get("EXPLODE_DIR_MODE", "BOTH")
 try:
     explode_duration = float(os.environ.get("EXPLODE_DURATION", "20.0"))
 except ValueError:
     explode_duration = 20.0
-create_adaptive_bbox_explosion(axis=explode_axis, factor=5.0, total_seconds=explode_duration)
+create_adaptive_bbox_explosion(
+    axis=explode_axis, 
+    direction_mode=explode_dir_mode, 
+    factor=5.0, 
+    total_seconds=explode_duration
+)

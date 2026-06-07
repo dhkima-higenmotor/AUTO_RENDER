@@ -20,8 +20,8 @@ class AxisSelectionDialog(tk.Toplevel):
         self.parent = parent
         self.result = None
         
-        self.title("Select Explode Axis")
-        self.geometry("320x180")
+        self.title("Select Explode Axis & Direction")
+        self.geometry("360x280")
         self.resizable(False, False)
         
         # Center the dialog relative to parent
@@ -34,28 +34,41 @@ class AxisSelectionDialog(tk.Toplevel):
         parent_w = parent.winfo_width()
         parent_h = parent.winfo_height()
         
-        x = parent_x + (parent_w - 320) // 2
-        y = parent_y + (parent_h - 180) // 2
+        x = parent_x + (parent_w - 360) // 2
+        y = parent_y + (parent_h - 280) // 2
         self.geometry(f"+{x}+{y}")
         
         # UI Elements
-        # Label
+        # Label for Axis
         lbl_msg = tk.Label(self, text="Select the disassembly (explode) axis:", font=("TkDefaultFont", 10, "bold"))
-        lbl_msg.pack(pady=15)
+        lbl_msg.pack(pady=(15, 5))
         
         # Radiobuttons for X, Y, Z
         self.axis_var = tk.StringVar(value="Y")
-        
         frame_radio = tk.Frame(self)
-        frame_radio.pack(pady=10)
+        frame_radio.pack(pady=5)
         
         for axis in ["X", "Y", "Z"]:
             rb = tk.Radiobutton(frame_radio, text=f"{axis} Axis", variable=self.axis_var, value=axis, font=("TkDefaultFont", 10))
             rb.pack(side="left", padx=15)
+
+        # Label for Direction Mode
+        lbl_dir = tk.Label(self, text="Select the explosion direction:", font=("TkDefaultFont", 10, "bold"))
+        lbl_dir.pack(pady=(15, 5))
+
+        # Radiobuttons for Direction (+, -, Both)
+        self.dir_var = tk.StringVar(value="BOTH")
+        frame_dir = tk.Frame(self)
+        frame_dir.pack(pady=5)
+
+        directions = [("+ (Positive)", "POS"), ("- (Negative)", "NEG"), ("Both (±)", "BOTH")]
+        for text, value in directions:
+            rb = tk.Radiobutton(frame_dir, text=text, variable=self.dir_var, value=value, font=("TkDefaultFont", 10))
+            rb.pack(side="left", padx=10)
             
         # Buttons Frame
         frame_buttons = tk.Frame(self)
-        frame_buttons.pack(pady=15)
+        frame_buttons.pack(pady=20)
         
         btn_ok = tk.Button(frame_buttons, text="OK", width=10, command=self.on_ok, bg="#4CAF50", fg="white", activebackground="#45a049")
         btn_ok.pack(side="left", padx=10)
@@ -67,7 +80,7 @@ class AxisSelectionDialog(tk.Toplevel):
         self.wait_window(self)
         
     def on_ok(self):
-        self.result = self.axis_var.get()
+        self.result = (self.axis_var.get(), self.dir_var.get())
         self.destroy()
         
     def on_cancel(self):
@@ -419,12 +432,12 @@ class AutoRenderApp:
         threading.Thread(target=task, daemon=True).start()
 
     def run_explode(self):
-        # 1. Ask user for axis
+        # 1. Ask user for axis & direction mode
         dialog = AxisSelectionDialog(self.root)
-        selected_axis = dialog.result
-        if not selected_axis:
+        if not dialog.result:
             self.log("Explode operation cancelled by user.")
             return
+        selected_axis, selected_dir_mode = dialog.result
 
         # 2. Ask user for duration
         duration_dialog = DurationSelectionDialog(self.root)
@@ -445,7 +458,7 @@ class AutoRenderApp:
         self.btn_render.config(state="disabled")
         self.btn_explode.config(state="disabled")
         self.log("-" * 40)
-        self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)} (Axis: {selected_axis}, Duration: {selected_duration}s)")
+        self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)} (Axis: {selected_axis}, Direction: {selected_dir_mode}, Duration: {selected_duration}s)")
         
         # 1. Copy the blend file with _explode suffix
         explode_blend_file = f"{os.path.splitext(blend_file)[0]}_explode.blend"
@@ -476,8 +489,9 @@ import bpy
 import os
 import sys
 
-# Configure selected axis & duration
+# Configure selected axis, direction mode & duration
 os.environ["EXPLODE_AXIS"] = "{selected_axis}"
+os.environ["EXPLODE_DIR_MODE"] = "{selected_dir_mode}"
 os.environ["EXPLODE_DURATION"] = "{selected_duration}"
 
 # Configure Render Settings
