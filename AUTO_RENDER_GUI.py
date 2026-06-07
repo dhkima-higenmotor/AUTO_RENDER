@@ -21,7 +21,7 @@ class AxisSelectionDialog(tk.Toplevel):
         self.result = None
         
         self.title("Select Explode Axis & Direction")
-        self.geometry("360x280")
+        self.geometry("360x260")
         self.resizable(False, False)
         
         # Center the dialog relative to parent
@@ -35,7 +35,7 @@ class AxisSelectionDialog(tk.Toplevel):
         parent_h = parent.winfo_height()
         
         x = parent_x + (parent_w - 360) // 2
-        y = parent_y + (parent_h - 280) // 2
+        y = parent_y + (parent_h - 260) // 2
         self.geometry(f"+{x}+{y}")
         
         # UI Elements
@@ -56,15 +56,15 @@ class AxisSelectionDialog(tk.Toplevel):
         lbl_dir = tk.Label(self, text="Select the explosion direction:", font=("TkDefaultFont", 10, "bold"))
         lbl_dir.pack(pady=(15, 5))
 
-        # Radiobuttons for Direction (+, -, Both)
-        self.dir_var = tk.StringVar(value="BOTH")
+        # Radiobuttons for Direction (+, -)
+        self.dir_var = tk.StringVar(value="POS")
         frame_dir = tk.Frame(self)
         frame_dir.pack(pady=5)
 
-        directions = [("+ (Positive)", "POS"), ("- (Negative)", "NEG"), ("Both (±)", "BOTH")]
+        directions = [("+ (Positive)", "POS"), ("- (Negative)", "NEG")]
         for text, value in directions:
             rb = tk.Radiobutton(frame_dir, text=text, variable=self.dir_var, value=value, font=("TkDefaultFont", 10))
-            rb.pack(side="left", padx=10)
+            rb.pack(side="left", padx=20)
             
         # Buttons Frame
         frame_buttons = tk.Frame(self)

@@ -18,6 +18,22 @@ def get_sorting_key(obj, axis_idx=1):
         return min_coord
     return max_coord
 
+def get_max_coord(obj, axis_idx=1):
+    """
+    Returns the maximum bounding box coordinate of the object along the selected axis.
+    """
+    matrix_world = obj.matrix_world
+    world_coords = [(matrix_world @ mathutils.Vector(corner))[axis_idx] for corner in obj.bound_box]
+    return max(world_coords)
+
+def get_min_coord(obj, axis_idx=1):
+    """
+    Returns the minimum bounding box coordinate of the object along the selected axis.
+    """
+    matrix_world = obj.matrix_world
+    world_coords = [(matrix_world @ mathutils.Vector(corner))[axis_idx] for corner in obj.bound_box]
+    return min(world_coords)
+
 def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, total_seconds=20.0):
     """
     axis: Axis along which the explosion happens ('X', 'Y', or 'Z')
@@ -73,40 +89,36 @@ def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, 
     direction_mode = direction_mode.upper()
     
     if direction_mode == 'POS':
-        # Unidirectional Positive: All components move positive, sorted lowest to highest coord
-        all_sorted = sorted(all_objects, key=lambda o: get_sorting_key(o, axis_idx), reverse=False)
-        for idx, obj in enumerate(all_sorted):
-            if num_parts <= 1:
-                displacements[obj] = max_disp
-            else:
-                group_factor = idx / (num_parts - 1)
-                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = 1.0
-            
-        # Delay order: outermost first in positive direction (highest coordinate starts first)
+        # Delay order: outermost first in positive direction (highest max coordinate starts first)
         sorted_objects = sorted(
             all_objects,
-            key=lambda o: get_sorting_key(o, axis_idx),
+            key=lambda o: get_max_coord(o, axis_idx),
             reverse=True
         )
-        
-    elif direction_mode == 'NEG':
-        # Unidirectional Negative: All components move negative, sorted highest to lowest coord
-        all_sorted = sorted(all_objects, key=lambda o: get_sorting_key(o, axis_idx), reverse=True)
-        for idx, obj in enumerate(all_sorted):
+        # Assign displacements: outermost (first in sorted_objects) gets max_disp, innermost gets min_disp
+        for idx, obj in enumerate(sorted_objects):
             if num_parts <= 1:
                 displacements[obj] = max_disp
             else:
-                group_factor = idx / (num_parts - 1)
+                group_factor = (num_parts - 1 - idx) / (num_parts - 1)
                 displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = -1.0
-            
-        # Delay order: outermost first in negative direction (lowest coordinate starts first)
+            directions[obj] = 1.0
+        
+    elif direction_mode == 'NEG':
+        # Delay order: outermost first in negative direction (lowest min coordinate starts first)
         sorted_objects = sorted(
             all_objects,
-            key=lambda o: get_sorting_key(o, axis_idx),
+            key=lambda o: get_min_coord(o, axis_idx),
             reverse=False
         )
+        # Assign displacements: outermost in negative (first in sorted_objects) gets max_disp, innermost gets min_disp
+        for idx, obj in enumerate(sorted_objects):
+            if num_parts <= 1:
+                displacements[obj] = max_disp
+            else:
+                group_factor = (num_parts - 1 - idx) / (num_parts - 1)
+                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
+            directions[obj] = -1.0
         
     else:  # BOTH (bidirectional) mode
         # Bidirectional: positive components move positive, negative move negative relative to center
