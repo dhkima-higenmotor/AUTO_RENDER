@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, messagebox
+from tkinter import filedialog, scrolledtext, messagebox, ttk
 import subprocess
 import threading
 import queue
@@ -36,6 +36,150 @@ def load_config():
         except Exception as e:
             print(f"Warning: Failed to load config.json: {e}")
     return config
+
+class ConfigEditorDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("Configuration Editor")
+        self.geometry("600x400")
+        self.resizable(True, True)
+        
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog relative to parent
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        
+        x = parent_x + (parent_w - 600) // 2
+        y = parent_y + (parent_h - 400) // 2
+        self.geometry(f"+{x}+{y}")
+        
+        # Treeview setup
+        self.tree = ttk.Treeview(self, columns=("Value"), show="tree headings")
+        self.tree.heading("#0", text="Key")
+        self.tree.heading("Value", text="Value")
+        self.tree.column("#0", width=200, anchor="w")
+        self.tree.column("Value", width=350, anchor="w")
+        
+        # Scrollbars
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
+        
+        # Buttons frame at bottom
+        frame_buttons = tk.Frame(self)
+        frame_buttons.pack(side="bottom", fill="x", pady=10)
+        
+        btn_save = tk.Button(frame_buttons, text="Save", width=12, command=self.on_save, bg="#4CAF50", fg="white", activebackground="#45a049")
+        btn_save.pack(side="right", padx=10)
+        
+        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=12, command=self.destroy)
+        btn_cancel.pack(side="right", padx=10)
+        
+        # Load config.json
+        self.config_data = load_config()
+        self.populate_tree()
+        
+        # Double click to edit event
+        self.tree.bind("<Double-1>", self.on_double_click)
+        
+    def populate_tree(self):
+        # Clear existing
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        for key, val in self.config_data.items():
+            self.tree.insert("", "end", iid=key, text=key, values=(str(val),))
+            
+    def on_double_click(self, event):
+        region = self.tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+            
+        column = self.tree.identify_column(event.x)
+        item_id = self.tree.identify_row(event.y)
+        
+        if not item_id:
+            return
+            
+        # We only allow editing the "Value" column, which is column index #1
+        if column != "#1":
+            return
+            
+        # Get item bbox to place entry widget exactly over the cell
+        bbox = self.tree.bbox(item_id, column)
+        if not bbox:
+            return
+            
+        x, y, w, h = bbox
+        
+        # Create an entry widget to edit the value
+        entry = tk.Entry(self.tree)
+        entry.insert(0, self.tree.set(item_id, "Value"))
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+        
+        entry.place(x=x, y=y, width=w, height=h)
+        
+        editing = True
+        def save_edit(event_or_none=None):
+            nonlocal editing
+            if not editing:
+                return
+            new_val = entry.get()
+            orig_val = self.config_data.get(item_id)
+            typed_val = new_val
+            
+            if isinstance(orig_val, bool):
+                typed_val = new_val.lower() in ("true", "1", "yes", "on")
+            elif isinstance(orig_val, int):
+                try:
+                    typed_val = int(new_val)
+                except ValueError:
+                    messagebox.showerror("Error", f"Value for {item_id} must be an integer.")
+                    editing = False
+                    entry.destroy()
+                    return
+            elif isinstance(orig_val, float):
+                try:
+                    typed_val = float(new_val)
+                except ValueError:
+                    messagebox.showerror("Error", f"Value for {item_id} must be a number.")
+                    editing = False
+                    entry.destroy()
+                    return
+            
+            self.config_data[item_id] = typed_val
+            self.tree.set(item_id, "Value", str(typed_val))
+            editing = False
+            entry.destroy()
+            
+        def cancel_edit(event=None):
+            nonlocal editing
+            if editing:
+                editing = False
+                entry.destroy()
+            
+        entry.bind("<Return>", save_edit)
+        entry.bind("<FocusOut>", save_edit)
+        entry.bind("<Escape>", cancel_edit)
+        
+    def on_save(self):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(script_dir, "config.json")
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(self.config_data, f, indent=2)
+            messagebox.showinfo("Success", "Configuration saved successfully.")
+            self.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save config.json: {e}")
 
 class AxisSelectionDialog(tk.Toplevel):
     def __init__(self, parent):
@@ -249,6 +393,9 @@ class AutoRenderApp:
         btn_help = tk.Button(frame_actions, text="HELP", command=self.open_help, width=10, height=1)
         btn_help.pack(side="right", padx=4)
         
+        btn_config = tk.Button(frame_actions, text="CONFIG", command=self.open_config, width=10, height=1)
+        btn_config.pack(side="right", padx=4)
+        
         # 3. Log Area
         frame_log = tk.LabelFrame(self.root, text="Output Log", padx=8, pady=4)
         frame_log.pack(fill="both", expand=True, padx=10, pady=2)
@@ -264,6 +411,9 @@ class AutoRenderApp:
     def open_help(self):
         import webbrowser
         webbrowser.open("https://codeberg.org/dymaxionkim/AUTO_RENDER")
+
+    def open_config(self):
+        ConfigEditorDialog(self.root)
 
     def process_log_queue(self):
         try:
