@@ -42,6 +42,14 @@ def main():
     resolution_x = 800
     resolution_y = 600
     resolution_percentage = 200
+    keywords_green_plastic = "ap-, bp-, pcb, connector, T-10-15-25, T-15-20-30, T-20-25-35, T-25-30-40, T-30-35-45, PT-10-20, PT-13-25, PT-14-25, PT-15-25, PT-20-30, PT-25-35, PT-30-40, PT-35-45, stator+bobbin"
+    keywords_brass = "hex_post"
+    keywords_brushed_nickel = "screw, bolt, key, pin, washer, nut, rivet, 나사, 볼트, 핀, 와셔, 너트, 리벳, 키, rotor+magnet"
+    keywords_stainless_steel = "bearing, 베어링, 6803zz, 6905zz, 6807zz, 6808zz, 6809zz, 6903zz, nsk, rau"
+    keywords_copper = "stator+coil"
+    keywords_carbon_steel = "stator+core"
+    keywords_pearl_black_plastic = "housing, case, cover, body, frame, shell, panel, enclosure, 하우징, 케이스, 커버, 외관, 몸체, 프레임, 패널, 셀"
+    
     selected_file = None
     if config_file.exists():
         selected_file = config_file
@@ -57,6 +65,13 @@ def main():
                 resolution_x = config_data.get("resolution_x", 800)
                 resolution_y = config_data.get("resolution_y", 600)
                 resolution_percentage = config_data.get("resolution_percentage", 200)
+                keywords_green_plastic = config_data.get("keywords_green_plastic", keywords_green_plastic)
+                keywords_brass = config_data.get("keywords_brass", keywords_brass)
+                keywords_brushed_nickel = config_data.get("keywords_brushed_nickel", keywords_brushed_nickel)
+                keywords_stainless_steel = config_data.get("keywords_stainless_steel", keywords_stainless_steel)
+                keywords_copper = config_data.get("keywords_copper", keywords_copper)
+                keywords_carbon_steel = config_data.get("keywords_carbon_steel", keywords_carbon_steel)
+                keywords_pearl_black_plastic = config_data.get("keywords_pearl_black_plastic", keywords_pearl_black_plastic)
         except Exception as e:
             print(f"Warning: Error reading configuration from {selected_file.name}: {e}")
     else:
@@ -92,6 +107,28 @@ import time
 
 def run():
     pending_downloads = []
+    
+    keywords_green_plastic = "{keywords_green_plastic}"
+    keywords_brass = "{keywords_brass}"
+    keywords_brushed_nickel = "{keywords_brushed_nickel}"
+    keywords_stainless_steel = "{keywords_stainless_steel}"
+    keywords_copper = "{keywords_copper}"
+    keywords_carbon_steel = "{keywords_carbon_steel}"
+    keywords_pearl_black_plastic = "{keywords_pearl_black_plastic}"
+
+    def check_match(name_lower, keywords_str):
+        if not keywords_str:
+            return False
+        kws = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
+        for kw in kws:
+            if '+' in kw:
+                sub_kws = [sk.strip() for sk in kw.split('+') if sk.strip()]
+                if sub_kws and all(sk in name_lower for sk in sub_kws):
+                    return True
+            else:
+                if kw in name_lower:
+                    return True
+        return False
     # Helper to set socket value robustly across Blender versions and locales
     def set_socket(node, name, value):
         if not node: return False
@@ -583,56 +620,30 @@ def run():
         print("Applied fallback solid white background.")
         return False
 
-    hw_keywords = ["screw", "bolt", "key", "pin", "washer", "nut", "rivet", "나사", "볼트", "핀", "와셔", "너트", "리벳", "키"]
-    bearing_keywords = ["bearing", "베어링", "6803zz", "6905zz", "6807zz", "6808zz", "6809zz", "6903zz", "nsk", "rau"]
-    
     for obj in bpy.data.objects:
         if obj.type == 'MESH':
             name_lower = obj.name.lower()
             assigned_mat = None
             asset_ids = []
             
-            # Rule 0a: AP-, BP-, PCB, CONNECTOR -> Green Plastic
-            if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector", "T-10-15-25", "T-15-20-30", "T-20-25-35", "T-25-30-40", "T-30-35-45", "PT-10-20", "PT-13-25", "PT-14-25", "PT-15-25", "PT-20-30", "PT-25-35", "PT-30-40", "PT-35-45"]):
+            if check_match(name_lower, keywords_green_plastic):
                 assigned_mat = mat_green_plastic
                 asset_ids = ["387e8822-6486-473d-92ff-3a91f426dd64"]
-
-            # Rule 0b: HEX_POST -> Brass
-            elif "hex_post" in name_lower:
+            elif check_match(name_lower, keywords_brass):
                 assigned_mat = mat_brass
                 asset_ids = ["f0c815ea-41ce-448e-ade1-8bcf1beebd3e", "e7be890c-f95e-43eb-9686-6a1e09e25aa4"]
-
-            # Rule 1: Brushed Nickel (Screws, Bolts, Keys, etc.)
-            elif any(hw in name_lower for hw in hw_keywords):
+            elif check_match(name_lower, keywords_brushed_nickel):
                 assigned_mat = mat_brushed_nickel
                 asset_ids = ["b058fc10-bd2a-4cb5-8e05-f330fad99101"]
-                
-            # Rule 2: Stainless Steel (Bearings)
-            elif any(brg in name_lower for brg in bearing_keywords):
+            elif check_match(name_lower, keywords_stainless_steel):
                 assigned_mat = mat_stainless_steel
                 asset_ids = ["79540f1a-c977-436f-b949-d9a2aa4c44a1"]
-                
-            # Rule 3: STATOR + COIL -> Copper
-            elif "stator" in name_lower and "coil" in name_lower:
+            elif check_match(name_lower, keywords_copper):
                 assigned_mat = mat_copper
                 asset_ids = ["b19cef5d-04f7-4569-b53f-8c3475b2526d", "cba239ae-5280-48f1-a1ba-61e36d98d406"]
-                
-            # Rule 4: STATOR + CORE -> Carbon Steel
-            elif "stator" in name_lower and "core" in name_lower:
+            elif check_match(name_lower, keywords_carbon_steel):
                 assigned_mat = mat_carbon_steel
                 asset_ids = ["58281db0-4437-4069-b925-5a8ab1c32197"]
-                
-            # Rule 5: STATOR + BOBBIN -> Green Plastic
-            elif "stator" in name_lower and "bobbin" in name_lower:
-                assigned_mat = mat_green_plastic
-                asset_ids = ["387e8822-6486-473d-92ff-3a91f426dd64"]
-                
-            # Rule 6: ROTOR + MAGNET -> Nickel (which is Brushed Nickel per request #2)
-            elif "rotor" in name_lower and "magnet" in name_lower:
-                assigned_mat = mat_brushed_nickel
-                asset_ids = ["b058fc10-bd2a-4cb5-8e05-f330fad99101"]
-                
-            # Rule 7: Fallback -> Aluminium
             else:
                 assigned_mat = mat_aluminium
                 asset_ids = ["8e58e654-b722-49b7-aa44-e24210d5eede"]
@@ -646,19 +657,14 @@ def run():
     
     # Filter out hardware and internal machine components from outer housing candidates
     candidate_objs = []
-    hw_keywords = ["screw", "bolt", "key", "pin", "washer", "nut", "rivet", "bearing", "나사", "볼트", "핀", "와셔", "너트", "리벳", "키", "베어링"]
     for obj in mesh_objs:
         name_lower = obj.name.lower()
-        # Filter out hardware
-        if any(hw in name_lower for hw in hw_keywords) or any(brg in name_lower for brg in bearing_keywords):
-            continue
-        # Filter out motor internals
-        if "stator" in name_lower and ("coil" in name_lower or "core" in name_lower or "bobbin" in name_lower):
-            continue
-        if "rotor" in name_lower and "magnet" in name_lower:
-            continue
-        # Filter out PCBs, connectors, plates, and hex posts
-        if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector", "hex_post"]):
+        if (check_match(name_lower, keywords_green_plastic) or
+            check_match(name_lower, keywords_brass) or
+            check_match(name_lower, keywords_brushed_nickel) or
+            check_match(name_lower, keywords_stainless_steel) or
+            check_match(name_lower, keywords_copper) or
+            check_match(name_lower, keywords_carbon_steel)):
             continue
         candidate_objs.append(obj)
             
@@ -716,10 +722,8 @@ def run():
                 
             # Extra weight for naming
             name_lower = obj.name.lower()
-            for keyword in ['housing', 'case', 'cover', 'body', 'frame', 'shell', 'panel', 'enclosure', '하우징', '케이스', '커버', '외관', '몸체', '프레임', '패널', '셀']:
-                if keyword in name_lower:
-                    score *= 2.0
-                    break
+            if check_match(name_lower, keywords_pearl_black_plastic):
+                score *= 2.0
                     
             scores.append((score, obj))
             
@@ -729,10 +733,9 @@ def run():
         outer_objs = []
         
         # 1. Force include any object with housing keywords in its name
-        keywords = ['housing', 'case', 'cover', 'body', 'frame', 'shell', 'panel', 'enclosure', '하우징', '케이스', '커버', '외관', '몸체', '프레임', '패널', '셀']
         for score, obj in scores:
             name_lower = obj.name.lower()
-            if any(kw in name_lower for kw in keywords):
+            if check_match(name_lower, keywords_pearl_black_plastic):
                 if obj not in outer_objs:
                     outer_objs.append(obj)
                     
