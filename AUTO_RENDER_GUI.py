@@ -63,7 +63,7 @@ class ConfigEditorDialog(tk.Toplevel):
         self.title("Configuration Editor")
         
         width = 800
-        height = 500
+        height = 620
         self.geometry(f"{width}x{height}")
         self.resizable(True, True)
         
@@ -90,9 +90,25 @@ class ConfigEditorDialog(tk.Toplevel):
         btn_cancel = tk.Button(frame_buttons, text="Cancel", width=12, command=self.destroy)
         btn_cancel.pack(side="right", padx=10)
         
+        # Details frame just above the buttons
+        self.frame_details = tk.LabelFrame(self, text="Selected Value Details (Word Wrapped & Editable)", padx=10, pady=5)
+        self.frame_details.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+        
+        self.lbl_selected_key = tk.Label(self.frame_details, text="Select a key from the list above to view/edit", font=("TkDefaultFont", 9, "bold"), anchor="w")
+        self.lbl_selected_key.pack(fill="x", pady=(0, 5))
+        
+        # Text widget for multiline editing
+        self.txt_value = tk.Text(self.frame_details, height=5, wrap="word", font="TkDefaultFont")
+        self.txt_value.pack(side="left", fill="both", expand=True)
+        self.txt_value.config(state="disabled")
+        
+        txt_scrollbar = ttk.Scrollbar(self.frame_details, orient="vertical", command=self.txt_value.yview)
+        self.txt_value.configure(yscrollcommand=txt_scrollbar.set)
+        txt_scrollbar.pack(side="right", fill="y")
+        
         # Tree and scrollbar frame filling the top remaining space
         frame_tree = tk.Frame(self)
-        frame_tree.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 0))
+        frame_tree.pack(side="top", fill="both", expand=True, padx=10, pady=10)
         
         # Treeview setup
         self.tree = ttk.Treeview(frame_tree, columns=("Value"), show="tree headings")
@@ -112,7 +128,10 @@ class ConfigEditorDialog(tk.Toplevel):
         self.config_data = load_config()
         self.populate_tree()
         
-        # Double click to edit event
+        # Event bindings
+        self.current_selected_key = None
+        self.tree.bind("<<TreeviewSelect>>", self.on_select_item)
+        self.txt_value.bind("<KeyRelease>", self.on_text_change)
         self.tree.bind("<Double-1>", self.on_double_click)
         
     def populate_tree(self):
@@ -123,6 +142,30 @@ class ConfigEditorDialog(tk.Toplevel):
         for key, val in self.config_data.items():
             self.tree.insert("", "end", iid=key, text=key, values=(str(val),))
             
+    def on_select_item(self, event):
+        selected = self.tree.selection()
+        if not selected:
+            self.current_selected_key = None
+            self.lbl_selected_key.config(text="Select a key from the list above to view/edit")
+            self.txt_value.delete("1.0", tk.END)
+            self.txt_value.config(state="disabled")
+            return
+            
+        key = selected[0]
+        self.current_selected_key = key
+        val = self.tree.set(key, "Value")
+        
+        self.lbl_selected_key.config(text=f"Key: {key}")
+        self.txt_value.config(state="normal")
+        self.txt_value.delete("1.0", tk.END)
+        self.txt_value.insert("1.0", val)
+        
+    def on_text_change(self, event=None):
+        if not self.current_selected_key:
+            return
+        new_val_str = self.txt_value.get("1.0", "end-1c")
+        self.tree.set(self.current_selected_key, "Value", new_val_str)
+        
     def on_double_click(self, event):
         region = self.tree.identify_region(event.x, event.y)
         if region != "cell":
@@ -134,18 +177,15 @@ class ConfigEditorDialog(tk.Toplevel):
         if not item_id:
             return
             
-        # We only allow editing the "Value" column, which is column index #1
         if column != "#1":
             return
             
-        # Get item bbox to place entry widget exactly over the cell
         bbox = self.tree.bbox(item_id, column)
         if not bbox:
             return
             
         x, y, w, h = bbox
         
-        # Create an entry widget to edit the value
         entry = tk.Entry(self.tree)
         entry.insert(0, self.tree.set(item_id, "Value"))
         entry.select_range(0, tk.END)
@@ -181,10 +221,14 @@ class ConfigEditorDialog(tk.Toplevel):
                     entry.destroy()
                     return
             
-            self.config_data[item_id] = typed_val
             self.tree.set(item_id, "Value", str(typed_val))
             editing = False
             entry.destroy()
+            
+            # Sync details text area
+            if self.current_selected_key == item_id:
+                self.txt_value.delete("1.0", tk.END)
+                self.txt_value.insert("1.0", str(typed_val))
             
         def cancel_edit(event=None):
             nonlocal editing
@@ -197,11 +241,48 @@ class ConfigEditorDialog(tk.Toplevel):
         entry.bind("<Escape>", cancel_edit)
         
     def on_save(self):
+        updated_config = {}
+        for key in self.config_data.keys():
+            val_str = self.tree.set(key, "Value")
+            orig_val = self.config_data[key]
+            
+            if isinstance(orig_val, bool):
+                val_lower = val_str.strip().lower()
+                if val_lower in ("true", "1", "yes", "on"):
+                    typed_val = True
+                elif val_lower in ("false", "0", "no", "off"):
+                    typed_val = False
+                else:
+                    messagebox.showerror("Validation Error", f"Value for '{key}' must be True or False.")
+                    self.tree.selection_set(key)
+                    self.tree.focus(key)
+                    return
+            elif isinstance(orig_val, int):
+                try:
+                    typed_val = int(val_str.strip())
+                except ValueError:
+                    messagebox.showerror("Validation Error", f"Value for '{key}' must be an integer.")
+                    self.tree.selection_set(key)
+                    self.tree.focus(key)
+                    return
+            elif isinstance(orig_val, float):
+                try:
+                    typed_val = float(val_str.strip())
+                except ValueError:
+                    messagebox.showerror("Validation Error", f"Value for '{key}' must be a number.")
+                    self.tree.selection_set(key)
+                    self.tree.focus(key)
+                    return
+            else:
+                typed_val = val_str
+                
+            updated_config[key] = typed_val
+            
         script_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(script_dir, "config.json")
         try:
             with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(self.config_data, f, indent=2)
+                json.dump(updated_config, f, indent=2)
             messagebox.showinfo("Success", "Configuration saved successfully.")
             self.destroy()
         except Exception as e:
