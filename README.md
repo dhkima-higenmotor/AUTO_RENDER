@@ -38,7 +38,7 @@
 > ```bash
 > scoop install uv blender
 > ```
-> 이 폴더의 `config.json.template`을 복사하여 `config.json`을 생성한 뒤, 설치된 `blender.exe`의 실제 경로를 `"blender_exe"` 필드에 입력하세요. (예: `"blender_exe": "C:\\Users\\Username\\scoop\\apps\\blender\\current\\blender.exe"`) 또한 필요에 따라 샘플 수(`render_samples`), 디노이즈 여부, 분해 기본 설정(축, 방향, 시간)을 조절할 수 있습니다.
+> 이 폴더에 `config.json` 파일이 없더라도 기본적으로 `config.json.template`을 읽어 동작하므로 별도로 파일을 복사할 필요가 없습니다. 프로그램 실행 후 우측 하단의 `CONFIG` 버튼을 눌러 설정을 편집하고 저장(`Save`)하면 `config.json` 파일이 자동으로 생성됩니다. 필요에 따라 Blender 실행 경로(`blender_exe`), 샘플 수(`render_samples`), 디노이즈 여부, 분해 기본 설정, 렌더링 이미지 해상도 및 배율을 편집하여 사용하십시오.
 
 * Solidworks 셋팅은 아래 이미지 참조
 
