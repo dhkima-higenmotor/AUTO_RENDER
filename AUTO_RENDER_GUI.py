@@ -60,7 +60,10 @@ class ConfigEditorDialog(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Configuration Editor")
-        self.geometry("600x400")
+        
+        width = 800
+        height = 500
+        self.geometry(f"{width}x{height}")
         self.resizable(True, True)
         
         self.transient(parent)
@@ -72,25 +75,11 @@ class ConfigEditorDialog(tk.Toplevel):
         parent_w = parent.winfo_width()
         parent_h = parent.winfo_height()
         
-        x = parent_x + (parent_w - 600) // 2
-        y = parent_y + (parent_h - 400) // 2
+        x = parent_x + (parent_w - width) // 2
+        y = parent_y + (parent_h - height) // 2
         self.geometry(f"+{x}+{y}")
         
-        # Treeview setup
-        self.tree = ttk.Treeview(self, columns=("Value"), show="tree headings")
-        self.tree.heading("#0", text="Key")
-        self.tree.heading("Value", text="Value")
-        self.tree.column("#0", width=200, anchor="w")
-        self.tree.column("Value", width=350, anchor="w")
-        
-        # Scrollbars
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
-        scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
-        
-        # Buttons frame at bottom
+        # Buttons frame at bottom (pack this first so it stays at the bottom)
         frame_buttons = tk.Frame(self)
         frame_buttons.pack(side="bottom", fill="x", pady=10)
         
@@ -99,6 +88,24 @@ class ConfigEditorDialog(tk.Toplevel):
         
         btn_cancel = tk.Button(frame_buttons, text="Cancel", width=12, command=self.destroy)
         btn_cancel.pack(side="right", padx=10)
+        
+        # Tree and scrollbar frame filling the top remaining space
+        frame_tree = tk.Frame(self)
+        frame_tree.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 0))
+        
+        # Treeview setup
+        self.tree = ttk.Treeview(frame_tree, columns=("Value"), show="tree headings")
+        self.tree.heading("#0", text="Key")
+        self.tree.heading("Value", text="Value")
+        self.tree.column("#0", width=200, anchor="w")
+        self.tree.column("Value", width=550, anchor="w")
+        
+        # Scrollbars
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         # Load config.json
         self.config_data = load_config()
