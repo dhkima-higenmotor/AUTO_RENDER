@@ -90,6 +90,9 @@ class ConfigEditorDialog(tk.Toplevel):
         btn_cancel = tk.Button(frame_buttons, text="Cancel", width=12, command=self.destroy)
         btn_cancel.pack(side="right", padx=10)
         
+        btn_tip = tk.Button(frame_buttons, text="Tip", width=12, command=self.show_tip, bg="#008CBA", fg="white", activebackground="#007B9A")
+        btn_tip.pack(side="right", padx=10)
+        
         # Details frame just above the buttons
         self.frame_details = tk.LabelFrame(self, text="Selected Value Details (Word Wrapped & Editable)", padx=10, pady=5)
         self.frame_details.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
@@ -165,6 +168,39 @@ class ConfigEditorDialog(tk.Toplevel):
             return
         new_val_str = self.txt_value.get("1.0", "end-1c")
         self.tree.set(self.current_selected_key, "Value", new_val_str)
+        
+    def show_tip(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showinfo("Tip", "키 목록에서 항목을 선택하시면 해당 설정값에 대한 구체적인 도움말을 확인하실 수 있습니다.")
+            return
+            
+        key = selected[0]
+        tip_text = self.get_tip_text(key)
+        messagebox.showinfo(f"Tip: {key}", tip_text)
+        
+    def get_tip_text(self, key):
+        tips = {
+            "blender_exe": "Blender 실행 파일(blender.exe)의 전체 경로 또는 명령어 이름을 지정합니다.\n\n예: blender, C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe",
+            "render_samples": "최종 고품질 이미지 생성 시 Cycles 렌더 엔진의 최대 샘플링 횟수입니다. 값이 클수록 화질이 좋아지지만 렌더링 시간이 길어집니다.\n\n예: 512, 1024",
+            "viewport_samples": "블렌더 뷰포트(실시간 미리보기) 내에서 Cycles 엔진이 사용할 최대 샘플 수입니다.\n\n예: 64, 128",
+            "use_denoising": "최종 이미지의 지저분한 노이즈를 자동으로 제거하는 디노이저(Denoising) 활성화 여부입니다.\n\n허용 값: True (활성), False (비활성)",
+            "explode_axis": "EXPLODE(분해) 애니메이션 시 부품들이 퍼져 나갈 기준 중심 축입니다.\n\n허용 값: X, Y, Z",
+            "explode_dir_mode": "EXPLODE(분해) 애니메이션 시 부품들이 흩어지는 이동 방향입니다.\n\n허용 값:\n- POS: 양의 방향 (X, Y, Z축의 + 방향)\n- NEG: 음의 방향 (X, Y, Z축의 - 방향)",
+            "explode_duration": "분해 조립 애니메이션 동영상의 총 재생 시간(초 단위)입니다.\n\n예: 20, 30",
+            "resolution_x": "최종 렌더링 이미지의 가로 크기(픽셀 단위)입니다.\n\n예: 800, 1920",
+            "resolution_y": "최종 렌더링 이미지의 세로 크기(픽셀 단위)입니다.\n\n예: 600, 1080",
+            "resolution_percentage": "최종 이미지 렌더링 시 해상도(resolution_x, resolution_y)에 곱할 비율(%)입니다. 200% 설정 시 2배 크기로 렌더링되어 정밀한 결과물이 나옵니다.\n\n예: 100, 200",
+            "resolution_percentage_explode": "EXPLODE(분해) 동영상 렌더링 시 적용될 해상도 비율(%)입니다. 비디오 렌더링 속도 단축을 위해 일반적으로 100을 지정합니다.\n\n예: 100, 150",
+            "keywords_green_plastic": "PCB 회로 기판, 커넥터 등에 녹색 플라스틱(Green Plastic) 재질을 부여할 부품명의 키워드 목록입니다. 쉼표(,)로 각 키워드를 나열하며, 대소문자는 구분하지 않습니다. 단어 조합 규칙은 '+'를 사용합니다.\n\n예: pcb, connector, stator+bobbin",
+            "keywords_brass": "지지 기둥(hex_post) 등에 Brass(황동) 재질을 부여할 부품명의 키워드 목록입니다. 쉼표(,)로 구분합니다.\n\n예: hex_post, brass_pin",
+            "keywords_brushed_nickel": "은색 무광의 Brushed Nickel(브러시드 니켈) 재질을 부여할 부품명 키워드 목록입니다. 나사, 볼트, 와셔, 핀 등에 유용합니다.\n\n예: screw, bolt, key, pin, 나사, 볼트, rotor+magnet",
+            "keywords_stainless_steel": "Stainless Steel(스테인리스 스틸) 재질을 부여할 부품명 키워드 목록입니다. 베어링, 구동 샤프트 등에 유용합니다.\n\n예: bearing, 베어링, nsk, rau",
+            "keywords_copper": "구리 코일 등에 Copper(구리) 재질을 부여할 부품명 키워드 목록입니다.\n\n예: stator+coil, copper_wire",
+            "keywords_carbon_steel": "Carbon Steel(탄소강) 재질을 부여할 부품명 키워드 목록입니다. 모터 코어 부위 등에 유용합니다.\n\n예: stator+core, iron_plate",
+            "keywords_pearl_black_plastic": "제품의 외부 하우징, 커버, 케이스 등에 펄 블랙 플라스틱(Pearl Black Plastic) 재질을 부여할 부품명 키워드 목록입니다.\n\n예: housing, case, cover, 하우징, 케이스, 프레임"
+        }
+        return tips.get(key, "이 항목에 대한 도움말 정보가 없습니다.")
         
     def on_double_click(self, event):
         region = self.tree.identify_region(event.x, event.y)
