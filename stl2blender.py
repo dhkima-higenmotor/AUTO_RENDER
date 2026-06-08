@@ -579,7 +579,7 @@ def run():
             asset_ids = []
             
             # Rule 0a: AP-, BP-, PCB, CONNECTOR -> Green Plastic
-            if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector"]):
+            if any(kw in name_lower for kw in ["ap-", "bp-", "pcb", "connector", "T-10-15-25", "T-15-20-30", "T-20-25-35", "T-25-30-40", "T-30-35-45", "PT-10-20", "PT-13-25", "PT-14-25", "PT-15-25", "PT-20-30", "PT-25-35", "PT-30-40", "PT-35-45"]):
                 assigned_mat = mat_green_plastic
                 asset_ids = ["387e8822-6486-473d-92ff-3a91f426dd64"]
 
