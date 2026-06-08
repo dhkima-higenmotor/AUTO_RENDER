@@ -54,6 +54,8 @@
 
 #### **Step 1: 프로그램 실행**
 * `AUTO_RENDER_GUI.bat` 파일을 더블 클릭하여 통합 GUI 창을 띄웁니다.
+* > [!TIP]
+  > **환경설정 편집 (`CONFIG`)**: GUI 우측 하단 `HELP` 버튼 왼쪽에 위치한 `CONFIG` 버튼을 누르면 팝업창에서 `config.json` 파일의 설정을 트리 형태로 간편하게 편집할 수 있습니다. 각 항목의 값을 더블클릭하여 편집을 수행하고 `Save` 버튼을 눌러 저장합니다.
 
 #### **Step 2: SolidWorks 파일 선택**
 * `Choose SLDASM` 버튼을 클릭하여 변환하고자 하는 SolidWorks 어셈블리 파일(`.SLDASM`)을 선택합니다.
