@@ -28,6 +28,7 @@ def load_config():
         "resolution_x": 800,
         "resolution_y": 600,
         "resolution_percentage": 200,
+        "resolution_percentage_explode": 100,
         "keywords_green_plastic": "ap-, bp-, pcb, connector, T-10-15-25, T-15-20-30, T-20-25-35, T-25-30-40, T-30-35-45, PT-10-20, PT-13-25, PT-14-25, PT-15-25, PT-20-30, PT-25-35, PT-30-40, PT-35-45, stator+bobbin",
         "keywords_brass": "hex_post",
         "keywords_brushed_nickel": "screw, bolt, key, pin, washer, nut, rivet, 나사, 볼트, 핀, 와셔, 너트, 리벳, 키, rotor+magnet",
@@ -671,9 +672,10 @@ class AutoRenderApp:
             self.btn_explode.config(state="normal")
             return
 
-        # Get Blender Exe Path
+        # Get Blender Exe Path and explode resolution percentage
         config = load_config()
         blender_exe = config.get("blender_exe", "blender")
+        resolution_percentage_explode = config.get("resolution_percentage_explode", 100)
 
         # Create temporary python script for Blender
         temp_script_path = os.path.join(os.path.dirname(explode_blend_file), "_temp_explode_render.py")
@@ -719,10 +721,10 @@ try:
 except Exception as e:
     print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 
-# Resolution settings (800x600, 100%)
+# Resolution settings (800x600, custom scale)
 bpy.context.scene.render.resolution_x = 800
 bpy.context.scene.render.resolution_y = 600
-bpy.context.scene.render.resolution_percentage = 100
+bpy.context.scene.render.resolution_percentage = {resolution_percentage_explode}
 
 # Frame rate: 30 fps
 bpy.context.scene.render.fps = 30
