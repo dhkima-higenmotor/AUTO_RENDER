@@ -29,6 +29,9 @@ def load_config():
         "resolution_y": 600,
         "resolution_percentage": 200,
         "resolution_percentage_explode": 100,
+        "render_engine": "CYCLES",
+        "compute_device": "GPU",
+        "cycles_device_type": "OPTIX",
         "keywords_green_plastic": "ap-, bp-, pcb, connector, T-10-15-25, T-15-20-30, T-20-25-35, T-25-30-40, T-30-35-45, PT-10-20, PT-13-25, PT-14-25, PT-15-25, PT-20-30, PT-25-35, PT-30-40, PT-35-45, stator+bobbin",
         "keywords_brass": "hex_post",
         "keywords_brushed_nickel": "screw, bolt, key, pin, washer, nut, rivet, 나사, 볼트, 핀, 와셔, 너트, 리벳, 키, rotor+magnet",
@@ -233,6 +236,9 @@ class ConfigEditorDialog(tk.Toplevel):
             "resolution_y": "최종 렌더링 이미지의 세로 크기(픽셀 단위)입니다.\n\n예: 600, 1080",
             "resolution_percentage": "최종 이미지 렌더링 시 해상도(resolution_x, resolution_y)에 곱할 비율(%)입니다. 200% 설정 시 2배 크기로 렌더링되어 정밀한 결과물이 나옵니다.\n\n예: 100, 200",
             "resolution_percentage_explode": "EXPLODE(분해) 동영상 렌더링 시 적용될 해상도 비율(%)입니다. 비디오 렌더링 속도 단축을 위해 일반적으로 100을 지정합니다.\n\n예: 100, 150",
+            "render_engine": "렌더링 시 사용할 엔진을 설정합니다.\n\n허용 값:\n- Cycles: 고품질 광선 추적(Raytracing) 렌더러 (기본값, 실사 렌더링에 권장)\n- EEVEE: 고속 실시간 렌더러",
+            "compute_device": "렌더링 계산에 사용할 연산 장치를 설정합니다.\n\n허용 값:\n- GPU: 그래픽카드 가속 연산 사용 (기본값, 권장)\n- CPU: CPU 연산 사용 (느림)",
+            "cycles_device_type": "Cycles 렌더 엔진에서 사용할 GPU 가속 API/프레임워크 기술 규격을 설정합니다.\n\n허용 값:\n- OptiX: NVIDIA RTX 그래픽카드 전용 초고속 레이트레이싱 API (RTX 시리즈 권장)\n- CUDA: NVIDIA 그래픽카드 범용 연산 API\n- HIP: AMD Radeon 그래픽카드용 API\n- None: 사용 안 함 (CPU 렌더링 시 선택)",
             "keywords_green_plastic": "PCB 회로 기판, 커넥터 등에 녹색 플라스틱(Green Plastic) 재질을 부여할 부품명의 키워드 목록입니다. 쉼표(,)로 각 키워드를 나열하며, 대소문자는 구분하지 않습니다. 단어 조합 규칙은 '+'를 사용합니다.\n\n예: pcb, connector, stator+bobbin",
             "keywords_brass": "지지 기둥(hex_post) 등에 Brass(황동) 재질을 부여할 부품명의 키워드 목록입니다. 쉼표(,)로 구분합니다.\n\n예: hex_post, brass_pin",
             "keywords_brushed_nickel": "은색 무광의 Brushed Nickel(브러시드 니켈) 재질을 부여할 부품명 키워드 목록입니다. 나사, 볼트, 와셔, 핀 등에 유용합니다.\n\n예: screw, bolt, key, pin, 나사, 볼트, rotor+magnet",
@@ -830,10 +836,18 @@ class AutoRenderApp:
             self.btn_explode.config(state="normal")
             return
 
-        # Get Blender Exe Path and explode resolution percentage
+        # Get Blender Exe Path and explode resolution percentage & renderer settings
         config = load_config()
         blender_exe = config.get("blender_exe", "blender")
         resolution_percentage_explode = config.get("resolution_percentage_explode", 100)
+        render_engine = config.get("render_engine", "CYCLES")
+        compute_device = config.get("compute_device", "GPU")
+        cycles_device_type = config.get("cycles_device_type", "OPTIX")
+
+        # Map values to Blender python constants
+        mapped_engine = "BLENDER_EEVEE" if render_engine.upper() == "EEVEE" else "CYCLES"
+        mapped_device = "GPU" if "GPU" in compute_device.upper() else "CPU"
+        mapped_cycles_device_type = cycles_device_type.upper()
 
         # Create temporary python script for Blender
         temp_script_path = os.path.join(os.path.dirname(explode_blend_file), "_temp_explode_render.py")
@@ -852,30 +866,29 @@ os.environ["EXPLODE_DIR_MODE"] = "{selected_dir_mode}"
 os.environ["EXPLODE_DURATION"] = "{selected_duration}"
 
 # Configure Render Settings
-bpy.context.scene.render.engine = 'CYCLES'
-bpy.context.scene.cycles.device = 'GPU'
+bpy.context.scene.render.engine = '{mapped_engine}'
+bpy.context.scene.cycles.device = '{mapped_device}'
 bpy.context.scene.cycles.samples = 64
 bpy.context.scene.cycles.use_denoising = False
 
 # Configure GPU device type
 try:
     cycles_pref = bpy.context.preferences.addons['cycles'].preferences
-    for dev_type in ('OPTIX', 'CUDA', 'HIP', 'ONEAPI'):
-        try:
-            cycles_pref.compute_device_type = dev_type
-            cycles_pref.get_devices()
-            has_gpu = False
-            for dev in cycles_pref.devices:
-                if dev.type != 'CPU':
-                    dev.use = True
-                    has_gpu = True
-                else:
-                    dev.use = False
-            if has_gpu:
-                print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
-                break
-        except Exception:
-            pass
+    dev_type = '{mapped_cycles_device_type}'
+    if dev_type != 'NONE':
+        cycles_pref.compute_device_type = dev_type
+        cycles_pref.get_devices()
+        has_gpu = False
+        for dev in cycles_pref.devices:
+            if dev.type != 'CPU':
+                dev.use = True
+                has_gpu = True
+            else:
+                dev.use = False
+        if has_gpu:
+            print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
+        else:
+            print(f"Warning: GPU devices not found for {{dev_type}}")
 except Exception as e:
     print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 

@@ -32,6 +32,9 @@ def run_render(blend_file, resolution):
     render_samples = 512
     viewport_samples = 64
     use_denoising = True
+    render_engine = "CYCLES"
+    compute_device = "GPU"
+    cycles_device_type = "OPTIX"
     
     # Read config.json or config.json.template
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,8 +55,15 @@ def run_render(blend_file, resolution):
                 render_samples = config_data.get("render_samples", 512)
                 viewport_samples = config_data.get("viewport_samples", 64)
                 use_denoising = config_data.get("use_denoising", True)
+                render_engine = config_data.get("render_engine", "CYCLES")
+                compute_device = config_data.get("compute_device", "GPU")
+                cycles_device_type = config_data.get("cycles_device_type", "OPTIX")
         except Exception as e:
             print(f"Warning: Failed to load config from {selected_path}: {e}")
+
+    mapped_engine = "BLENDER_EEVEE" if render_engine.upper() == "EEVEE" else "CYCLES"
+    mapped_device = "GPU" if "GPU" in compute_device.upper() else "CPU"
+    mapped_cycles_device_type = cycles_device_type.upper()
     
     print("-" * 40)
     print(f"Starting Render: {os.path.basename(blend_file)}")
@@ -103,9 +113,9 @@ if bg_node:
     bg_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
     bg_node.inputs['Strength'].default_value = 1.0
 
-# Ensure Cycles engine and GPU device are set for rendering
-bpy.context.scene.render.engine = 'CYCLES'
-bpy.context.scene.cycles.device = 'GPU'
+# Ensure engine and device are set for rendering
+bpy.context.scene.render.engine = '{mapped_engine}'
+bpy.context.scene.cycles.device = '{mapped_device}'
 
 # Set Sampling (Viewport: {viewport_samples}, Render: {render_samples}, Denoise: {use_denoising})
 bpy.context.scene.cycles.preview_samples = {viewport_samples}
@@ -114,22 +124,21 @@ bpy.context.scene.cycles.use_denoising = {use_denoising}
 
 try:
     cycles_pref = bpy.context.preferences.addons['cycles'].preferences
-    for dev_type in ('OPTIX', 'CUDA', 'HIP', 'ONEAPI'):
-        try:
-            cycles_pref.compute_device_type = dev_type
-            cycles_pref.get_devices()
-            has_gpu = False
-            for dev in cycles_pref.devices:
-                if dev.type != 'CPU':
-                    dev.use = True
-                    has_gpu = True
-                else:
-                    dev.use = False
-            if has_gpu:
-                print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
-                break
-        except Exception:
-            pass
+    dev_type = '{mapped_cycles_device_type}'
+    if dev_type != 'NONE':
+        cycles_pref.compute_device_type = dev_type
+        cycles_pref.get_devices()
+        has_gpu = False
+        for dev in cycles_pref.devices:
+            if dev.type != 'CPU':
+                dev.use = True
+                has_gpu = True
+            else:
+                dev.use = False
+        if has_gpu:
+            print(f"Cycles GPU Compute Device Type configured: {{dev_type}}")
+        else:
+            print(f"Warning: GPU devices not found for {{dev_type}}")
 except Exception as e:
     print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 

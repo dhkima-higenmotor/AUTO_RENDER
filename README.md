@@ -57,6 +57,18 @@
 * **`use_denoising`**: 최종 렌더링 결과물에 디노이저(Denoising)를 적용하여 노이즈를 제어할지 여부
   * `true`: 디노이즈 활성화 (기본값)
   * `false`: 디노이즈 비활성화
+* **`render_engine`**: 렌더링에 사용할 엔진 종류
+  * `"Cycles"`: 높은 실사 품질의 광선 추적(Raytracing) 엔진 (기본값, 권장)
+  * `"EEVEE"`: 실시간 물리 기반 렌더링 엔진 (렌더 속도가 매우 빠름)
+* **`compute_device`**: 렌더링 연산을 수행할 디바이스
+  * `"GPU"`: 그래픽카드를 사용해 연산 (기본값, 강력 권장)
+  * `"CPU"`: 중앙처리장치(CPU)를 사용해 연산
+* **`cycles_device_type`**: Cycles 엔진에서 GPU 연산을 활성화할 때 사용할 프레임워크 기술 규격
+  * `"OptiX"`: NVIDIA RTX 그래픽카드 전용 초고속 광선 추적 가속 API (NVIDIA RTX 카드 장착 시 권장, 기본값)
+  * `"CUDA"`: NVIDIA 그래픽카드 범용 연산 API
+  * `"HIP"`: AMD Radeon 그래픽카드용 API
+  * `"None"`: 사용 안 함 (CPU 렌더링 등 외장 GPU 가속이 불필요할 때 지정)
+
 
 ### 2. 분해 애니메이션 설정 (EXPLODE)
 * **`explode_axis`**: 분해 애니메이션 시 부품이 흩어지는 기준 축
