@@ -24,7 +24,10 @@ def load_config():
         "use_denoising": True,
         "explode_axis": "Y",
         "explode_dir_mode": "POS",
-        "explode_duration": 20
+        "explode_duration": 20,
+        "resolution_x": 800,
+        "resolution_y": 600,
+        "resolution_percentage": 200
     }
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config.json")

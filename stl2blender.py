@@ -39,6 +39,9 @@ def main():
     template_file = script_dir / "config.json.template"
     
     blender_exe = "blender"
+    resolution_x = 800
+    resolution_y = 600
+    resolution_percentage = 200
     selected_file = None
     if config_file.exists():
         selected_file = config_file
@@ -51,10 +54,13 @@ def main():
             with open(selected_file, "r", encoding="utf-8") as config_f:
                 config_data = json.load(config_f)
                 blender_exe = config_data.get("blender_exe", "blender")
+                resolution_x = config_data.get("resolution_x", 800)
+                resolution_y = config_data.get("resolution_y", 600)
+                resolution_percentage = config_data.get("resolution_percentage", 200)
         except Exception as e:
             print(f"Warning: Error reading configuration from {selected_file.name}: {e}")
     else:
-        print("Warning: config.json or config.json.template not found. Using default 'blender' path.")
+        print("Warning: config.json or config.json.template not found. Using default blender configuration.")
         
     if os.path.isabs(blender_exe) and not os.path.exists(blender_exe):
         print(f"Error: Blender executable not found at '{blender_exe}'")
@@ -934,9 +940,9 @@ def run():
 
         # 8. Render Settings
         print("Configuring Render Settings...")
-        bpy.context.scene.render.resolution_x = 800
-        bpy.context.scene.render.resolution_y = 600
-        bpy.context.scene.render.resolution_percentage = 200
+        bpy.context.scene.render.resolution_x = {resolution_x}
+        bpy.context.scene.render.resolution_y = {resolution_y}
+        bpy.context.scene.render.resolution_percentage = {resolution_percentage}
 
         # Set Render Engine to Cycles and device to GPU
         bpy.context.scene.render.engine = 'CYCLES'

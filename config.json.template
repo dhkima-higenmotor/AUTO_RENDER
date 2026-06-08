@@ -5,5 +5,8 @@
   "use_denoising": true,
   "explode_axis": "Y",
   "explode_dir_mode": "POS",
-  "explode_duration": 20
+  "explode_duration": 20,
+  "resolution_x": 800,
+  "resolution_y": 600,
+  "resolution_percentage": 200
 }
