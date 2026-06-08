@@ -1,0 +1,9 @@
+{
+  "blender_exe": "blender",
+  "render_samples": 512,
+  "viewport_samples": 64,
+  "use_denoising": true,
+  "explode_axis": "Y",
+  "explode_dir_mode": "POS",
+  "explode_duration": 20
+}

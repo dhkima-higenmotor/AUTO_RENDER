@@ -29,7 +29,7 @@
 
 1. **SolidWorks**: 어셈블리 파일을 열고 STL을 내보내기 위해 설치되어 있어야 합니다.
 2. **Blender (5.0 이상 권장)**: 3D 씬 구성 및 렌더링을 위해 필요합니다.
-   * 이 폴더의 `blender_exe.txt` 파일에 Blender 실행 파일(`blender.exe`)의 전체 경로를 반드시 기입해야 합니다.
+   * 이 폴더의 `config.json` 파일에 Blender 실행 파일(`blender.exe`)의 전체 경로(`blender_exe`) 및 각종 렌더링/분해 설정값을 설정할 수 있습니다.
 3. **uv**: 빠르고 효율적인 Python 패키지 실행 관리자입니다.
    * `uv`가 내부 스크립트 실행 환경을 자동으로 관리해 줍니다.
 
@@ -38,7 +38,7 @@
 > ```bash
 > scoop install uv blender
 > ```
-> 이후 설치된 `blender.exe`의 실제 경로를 이 폴더의 `blender_exe.txt` 파일에 입력하세요. (예: `C:\Users\Username\scoop\apps\blender\current\blender.exe`)
+> 이 폴더의 `config.json.template`을 복사하여 `config.json`을 생성한 뒤, 설치된 `blender.exe`의 실제 경로를 `"blender_exe"` 필드에 입력하세요. (예: `"blender_exe": "C:\\Users\\Username\\scoop\\apps\\blender\\current\\blender.exe"`) 또한 필요에 따라 샘플 수(`render_samples`), 디노이즈 여부, 분해 기본 설정(축, 방향, 시간)을 조절할 수 있습니다.
 
 * Solidworks 셋팅은 아래 이미지 참조
 

@@ -33,22 +33,24 @@ def main():
         print(f"Error creating directory: {e}")
         sys.exit(1)
 
-    # 3. Read Blender configuration
+    # 3. Read Blender configuration from config.json
     script_dir = Path(__file__).parent.resolve()
-    blender_exe_config = script_dir / "blender_exe.txt"
+    config_file = script_dir / "config.json"
     
-    if not blender_exe_config.exists():
-        print(f"Error: Configuration file '{blender_exe_config}' not found.")
-        sys.exit(1)
+    blender_exe = "blender"
+    
+    if config_file.exists():
+        import json
+        try:
+            with open(config_file, "r", encoding="utf-8") as config_f:
+                config_data = json.load(config_f)
+                blender_exe = config_data.get("blender_exe", "blender")
+        except Exception as e:
+            print(f"Warning: Error reading config.json: {e}")
+    else:
+        print("Warning: config.json not found. Using default 'blender' path.")
         
-    try:
-        with open(blender_exe_config, "r") as config_f:
-            blender_exe = config_f.read().strip()
-    except Exception as e:
-         print(f"Error reading configuration file: {e}")
-         sys.exit(1)
-
-    if not os.path.exists(blender_exe):
+    if os.path.isabs(blender_exe) and not os.path.exists(blender_exe):
         print(f"Error: Blender executable not found at '{blender_exe}'")
         sys.exit(1)
 

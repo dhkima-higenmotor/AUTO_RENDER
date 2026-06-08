@@ -25,12 +25,27 @@ def run_render(blend_file, resolution):
             print("Error: Resolution must be in format WxH (e.g., 800x600)")
             return
 
-    # Read Blender Exe Path
-    blender_exe = "blender" # default
-    if os.path.exists("blender_exe.txt"):
-        with open("blender_exe.txt", "r") as f:
-            content = f.read().strip()
-            if content: blender_exe = content
+    import json
+    
+    # Defaults
+    blender_exe = "blender"
+    render_samples = 512
+    viewport_samples = 64
+    use_denoising = True
+    
+    # Read config.json
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+                blender_exe = config_data.get("blender_exe", "blender")
+                render_samples = config_data.get("render_samples", 512)
+                viewport_samples = config_data.get("viewport_samples", 64)
+                use_denoising = config_data.get("use_denoising", True)
+        except Exception as e:
+            print(f"Warning: Failed to load config.json: {e}")
     
     print("-" * 40)
     print(f"Starting Render: {os.path.basename(blend_file)}")
@@ -84,10 +99,10 @@ if bg_node:
 bpy.context.scene.render.engine = 'CYCLES'
 bpy.context.scene.cycles.device = 'GPU'
 
-# Set Sampling (Viewport: 64, Render: 512, Denoise: On)
-bpy.context.scene.cycles.preview_samples = 64
-bpy.context.scene.cycles.samples = 512
-bpy.context.scene.cycles.use_denoising = True
+# Set Sampling (Viewport: {viewport_samples}, Render: {render_samples}, Denoise: {use_denoising})
+bpy.context.scene.cycles.preview_samples = {viewport_samples}
+bpy.context.scene.cycles.samples = {render_samples}
+bpy.context.scene.cycles.use_denoising = {use_denoising}
 
 try:
     cycles_pref = bpy.context.preferences.addons['cycles'].preferences

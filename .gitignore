@@ -11,6 +11,6 @@ wheels/
 
 # ETC
 ex/
-blender_exe.txt
+config.json
 README_files
 README.html

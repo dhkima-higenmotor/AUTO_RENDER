@@ -14,6 +14,29 @@ try:
 except Exception:
     pass
 
+import json
+
+def load_config():
+    config = {
+        "blender_exe": "blender",
+        "render_samples": 512,
+        "viewport_samples": 64,
+        "use_denoising": True,
+        "explode_axis": "Y",
+        "explode_dir_mode": "POS",
+        "explode_duration": 20
+    }
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                user_config = json.load(f)
+                config.update(user_config)
+        except Exception as e:
+            print(f"Warning: Failed to load config.json: {e}")
+    return config
+
 class AxisSelectionDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -43,8 +66,9 @@ class AxisSelectionDialog(tk.Toplevel):
         lbl_msg = tk.Label(self, text="Select the disassembly (explode) axis:", font=("TkDefaultFont", 10, "bold"))
         lbl_msg.pack(pady=(15, 5))
         
+        config = load_config()
         # Radiobuttons for X, Y, Z
-        self.axis_var = tk.StringVar(value="Y")
+        self.axis_var = tk.StringVar(value=config.get("explode_axis", "Y"))
         frame_radio = tk.Frame(self)
         frame_radio.pack(pady=5)
         
@@ -57,7 +81,7 @@ class AxisSelectionDialog(tk.Toplevel):
         lbl_dir.pack(pady=(15, 5))
 
         # Radiobuttons for Direction (+, -)
-        self.dir_var = tk.StringVar(value="POS")
+        self.dir_var = tk.StringVar(value=config.get("explode_dir_mode", "POS"))
         frame_dir = tk.Frame(self)
         frame_dir.pack(pady=5)
 
@@ -116,7 +140,8 @@ class DurationSelectionDialog(tk.Toplevel):
         lbl_msg.pack(pady=15)
         
         # Entry for duration
-        self.duration_var = tk.StringVar(value="20")
+        config = load_config()
+        self.duration_var = tk.StringVar(value=str(config.get("explode_duration", 20)))
         
         frame_input = tk.Frame(self)
         frame_input.pack(pady=5)
@@ -472,11 +497,8 @@ class AutoRenderApp:
             return
 
         # Get Blender Exe Path
-        blender_exe = "blender"
-        if os.path.exists("blender_exe.txt"):
-            with open("blender_exe.txt", "r") as f:
-                content = f.read().strip()
-                if content: blender_exe = content
+        config = load_config()
+        blender_exe = config.get("blender_exe", "blender")
 
         # Create temporary python script for Blender
         temp_script_path = os.path.join(os.path.dirname(explode_blend_file), "_temp_explode_render.py")
@@ -609,11 +631,8 @@ print("Animation render complete!")
             return
             
         # Read Blender Path
-        blender_exe = "blender"
-        if os.path.exists("blender_exe.txt"):
-            with open("blender_exe.txt", "r") as f:
-                content = f.read().strip()
-                if content: blender_exe = content
+        config = load_config()
+        blender_exe = config.get("blender_exe", "blender")
                 
         self.log("-" * 40)
         self.log(f"Launching Blender GUI with: {os.path.basename(blend_file)}")
