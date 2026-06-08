@@ -56,6 +56,47 @@ def load_config():
             print(f"Warning: Failed to load config from {selected_path}: {e}")
     return config
 
+class TipDialog(tk.Toplevel):
+    def __init__(self, parent, title, text):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("500x320")
+        self.resizable(True, True)
+        
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center relative to parent
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        
+        x = parent_x + (parent_w - 500) // 2
+        y = parent_y + (parent_h - 320) // 2
+        self.geometry(f"+{x}+{y}")
+        
+        # Text widget for description (word wrapped, read-only)
+        frame_text = tk.Frame(self)
+        frame_text.pack(fill="both", expand=True, padx=15, pady=(15, 10))
+        
+        txt = tk.Text(frame_text, wrap="word", font="TkDefaultFont", bg=self.cget("bg"), relief="flat", highlightthickness=0)
+        txt.insert("1.0", text)
+        txt.config(state="disabled")
+        txt.pack(side="left", fill="both", expand=True)
+        
+        scrollbar = ttk.Scrollbar(frame_text, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        
+        # OK Button to close
+        btn_ok = tk.Button(self, text="Close", width=12, command=self.destroy)
+        btn_ok.pack(pady=(0, 15))
+        
+        # Close on Escape or Return
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<Return>", lambda e: self.destroy())
+
 class ConfigEditorDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -172,12 +213,12 @@ class ConfigEditorDialog(tk.Toplevel):
     def show_tip(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo("Tip", "키 목록에서 항목을 선택하시면 해당 설정값에 대한 구체적인 도움말을 확인하실 수 있습니다.")
+            TipDialog(self, "Tip", "키 목록에서 항목을 선택하시면 해당 설정값에 대한 구체적인 도움말을 확인하실 수 있습니다.")
             return
             
         key = selected[0]
         tip_text = self.get_tip_text(key)
-        messagebox.showinfo(f"Tip: {key}", tip_text)
+        TipDialog(self, f"Tip: {key}", tip_text)
         
     def get_tip_text(self, key):
         tips = {
