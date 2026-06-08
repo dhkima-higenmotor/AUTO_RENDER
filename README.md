@@ -38,12 +38,56 @@
 > ```bash
 > scoop install uv blender
 > ```
-> 이 폴더에 `config.json` 파일이 없더라도 기본적으로 `config.json.template`을 읽어 동작하므로 별도로 파일을 복사할 필요가 없습니다. 프로그램 실행 후 우측 하단의 `CONFIG` 버튼을 눌러 설정을 편집하고 저장(`Save`)하면 `config.json` 파일이 자동으로 생성됩니다. 필요에 따라 Blender 실행 경로(`blender_exe`), 샘플 수(`render_samples`), 디노이즈 여부, 분해 기본 설정, 렌더링 이미지 해상도 및 배율, 그리고 각 재질별 부품 이름 매핑 키워드(예: `keywords_green_plastic`, `keywords_brass`, `keywords_brushed_nickel` 등)를 편집하여 사용하십시오.
+> 이 폴더에 `config.json` 파일이 없더라도 기본적으로 `config.json.template`을 읽어 동작하므로 별도로 파일을 복사할 필요가 없습니다. 프로그램 실행 후 우측 하단의 `CONFIG` 버튼을 눌러 설정을 편집하고 저장(`Save`)하면 `config.json` 파일이 자동으로 생성됩니다. 각 설정 항목의 의미와 지정 가능한 구체적인 값들은 아래 **설정 파일 상세 설명 (config.json)** 단락을 참고하여 설정해 주십시오.
 
 * Solidworks 셋팅은 아래 이미지 참조
 
 ![](AUTO_RENDER_02.png)
 
+---
+
+## ⚙️ 설정 파일 상세 설명 (config.json)
+
+프로그램 실행 폴더 내의 `config.json` 파일을 통해 다양한 설정을 조정할 수 있습니다. 각 설정 항목의 상세 설명 및 가능한 값은 다음과 같습니다:
+
+### 1. 기본 및 렌더링 설정
+* **`blender_exe`**: 설치된 Blender 실행 파일(`blender.exe`)의 전체 경로 또는 명령어 이름 (기본값: `"blender"`)
+* **`render_samples`**: 최종 이미지 생성 시 Cycles 렌더 엔진의 최대 샘플 수 (기본값: `512`)
+* **`viewport_samples`**: 블렌더 뷰포트 내에서의 Cycles 렌더 최대 샘플 수 (기본값: `64`)
+* **`use_denoising`**: 최종 렌더링 결과물에 디노이저(Denoising)를 적용하여 노이즈를 제어할지 여부
+  * `true`: 디노이즈 활성화 (기본값)
+  * `false`: 디노이즈 비활성화
+
+### 2. 분해 애니메이션 설정 (EXPLODE)
+* **`explode_axis`**: 분해 애니메이션 시 부품이 흩어지는 기준 축
+  * `"X"`: X축 방향
+  * `"Y"`: Y축 방향 (기본값)
+  * `"Z"`: Z축 방향
+* **`explode_dir_mode`**: 분해 애니메이션 시 부품이 흩어지는 방향 모드
+  * `"POS"`: 양(+)의 방향으로 이동 (기본값)
+  * `"NEG"`: 음(-)의 방향으로 이동
+* **`explode_duration`**: 분해 애니메이션 동영상의 총 재생 시간 (초 단위, 기본값: `20`)
+
+### 3. 해상도 및 배율 설정
+* **`resolution_x`**: 최종 렌더링 이미지의 가로 크기 (픽셀 단위, 기본값: `800`)
+* **`resolution_y`**: 최종 렌더링 이미지의 세로 크기 (픽셀 단위, 기본값: `600`)
+* **`resolution_percentage`**: 최종 렌더링 시 해상도 적용 비율 (기본값: `200` - 즉, 원래 해상도 기준 200% 크기로 렌더링)
+
+### 4. 부품 이름 기반 재질(Material) 매핑 키워드 설정
+부품 파일명(소문자 변환 기준)에 아래 키워드가 포함되어 있으면 해당하는 BlenderKit/절차적 재질이 자동으로 부여됩니다. 키워드는 쉼표(`,`)로 구분하여 여러 개를 지정할 수 있으며, 두 개 이상의 키워드가 모두 충족되어야 하는 경우는 덧셈 기호(`+`)를 사용하여 지정할 수 있습니다.
+
+* **`keywords_green_plastic`**: 단자, 커넥터, PCB 기판 등에 적용되는 **Green Plastic** 재질 키워드
+* **`keywords_brass`**: 지지대 등에 적용되는 **Brass** (황동) 재질 키워드
+* **`keywords_brushed_nickel`**: 볼트, 나사 등에 적용되는 **Brushed Nickel** 재질 키워드
+* **`keywords_stainless_steel`**: 베어링 등에 적용되는 **Stainless Steel** 재질 키워드
+* **`keywords_copper`**: 구리 코일 부품 등에 적용되는 **Copper** 재질 키워드
+* **`keywords_carbon_steel`**: 코어 부품 등에 적용되는 **Carbon Steel** 재질 키워드
+* **`keywords_pearl_black_plastic`**: 하우징, 케이스 등 제품 외관 부품에 적용되는 **Pearl Black Plastic** 재질 키워드
+
+> [!NOTE]
+> **조합 키워드(`+`) 사용 예시:**
+> - `stator+coil`로 설정된 경우, 부품명에 `stator`와 `coil` 단어가 **모두** 들어가 있을 때만 구리 재질이 부여됩니다.
+> - 일반 단일 단어(예: `bearing`)로 설정된 경우, 단어가 부품명의 일부로 포함되어 있으면 매핑이 적용됩니다.
 
 ---
 
