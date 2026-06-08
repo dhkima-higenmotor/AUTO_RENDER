@@ -1,5 +1,6 @@
 import bpy
 import mathutils
+from bpy_extras.object_utils import world_to_camera_view
 
 def get_sorting_key(obj, axis_idx=1):
     """
@@ -34,11 +35,76 @@ def get_min_coord(obj, axis_idx=1):
     world_coords = [(matrix_world @ mathutils.Vector(corner))[axis_idx] for corner in obj.bound_box]
     return min(world_coords)
 
+def o_center(obj, axis_idx):
+    """
+    Returns the center of the bounding box of the object along the selected axis.
+    """
+    matrix_world = obj.matrix_world
+    world_coords = [(matrix_world @ mathutils.Vector(corner))[axis_idx] for corner in obj.bound_box]
+    return (min(world_coords) + max(world_coords)) / 2.0
+
+def is_outside_camera(obj, camera, scene):
+    """
+    Checks if the bounding box of the object is completely outside the camera's viewport.
+    """
+    matrix_world = obj.matrix_world
+    corners = [matrix_world @ mathutils.Vector(corner) for corner in obj.bound_box]
+    
+    projected = []
+    for corner in corners:
+        co_ndc = world_to_camera_view(scene, camera, corner)
+        projected.append(co_ndc)
+        
+    # Check if they are all on one side of the camera view:
+    # 1. Behind the camera (z < 0)
+    # 2. To the left of the screen (x < 0)
+    # 3. To the right of the screen (x > 1)
+    # 4. Below the screen (y < 0)
+    # 5. Above the screen (y > 1)
+    if all(p.z < 0 for p in projected):
+        return True
+    if all(p.x < 0.0 for p in projected):
+        return True
+    if all(p.x > 1.0 for p in projected):
+        return True
+    if all(p.y < 0.0 for p in projected):
+        return True
+    if all(p.y > 1.0 for p in projected):
+        return True
+        
+    return False
+
+def find_clearance_displacement(obj, axis_idx, direction, camera, scene, assembly_scale):
+    """
+    Finds the minimum displacement required to push the object completely outside the camera viewport.
+    """
+    if not camera:
+        return assembly_scale * 3.0
+        
+    d = 0.0
+    step = assembly_scale * 0.1
+    orig_loc = obj.location.copy()
+    
+    for _ in range(500):
+        obj.location[axis_idx] = orig_loc[axis_idx] + direction * d
+        bpy.context.view_layer.update()
+        if is_outside_camera(obj, camera, scene):
+            # Restore original location
+            obj.location = orig_loc
+            bpy.context.view_layer.update()
+            return d
+        d += step
+        
+    # Fallback to a large displacement if it cannot clear
+    obj.location = orig_loc
+    bpy.context.view_layer.update()
+    return assembly_scale * 5.0
+
 def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, total_seconds=20.0):
     """
     axis: Axis along which the explosion happens ('X', 'Y', or 'Z')
     direction_mode: Direction of explosion ('POS', 'NEG', or 'BOTH')
-    factor: Explosion distance multiplier
+    factor: Explosion distance multiplier (retained for signature compatibility)
     total_seconds: Total animation duration in seconds (Default: 20.0s)
     """
     axis_map = {'X': 0, 'Y': 1, 'Z': 2}
@@ -77,77 +143,156 @@ def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, 
         assembly_scale = 1.0
 
     # 3. Calculate the global average center to determine the explosion direction
-    total_val = sum(obj.location[axis_idx] for obj in all_objects)
+    total_val = sum(o_center(obj, axis_idx) for obj in all_objects)
     global_center_val = total_val / num_parts
 
+    # Get active camera and scene
+    camera = bpy.context.scene.camera
+    if not camera:
+        cameras = [obj for obj in bpy.context.scene.objects if obj.type == 'CAMERA']
+        if cameras:
+            camera = cameras[0]
+
     # 4. Pre-calculate displacements, directions, and animation delay order based on direction_mode
-    # Even the innermost components must move completely off-screen (min_disp = 3.0 * assembly_scale).
-    min_disp = assembly_scale * 3.0
-    max_disp = max(assembly_scale * factor, min_disp + assembly_scale)
     displacements = {}
     directions = {}
     direction_mode = direction_mode.upper()
     
+    # Establish a visual spacing gap proportional to the assembly scale to keep parts distinct
+    base_gap = max(0.2 * assembly_scale, 0.5)
+    
     if direction_mode == 'POS':
-        # Delay order: outermost first in positive direction (highest max coordinate starts first)
+        # Sort objects by original center along the axis ascending (left to right)
+        objs_sorted_by_pos = sorted(
+            all_objects,
+            key=lambda o: o_center(o, axis_idx)
+        )
+        
+        # Innermost is the first element (moves least in POS direction). Get its clearance displacement.
+        d0 = find_clearance_displacement(objs_sorted_by_pos[0], axis_idx, 1.0, camera, bpy.context.scene, assembly_scale)
+        displacements[objs_sorted_by_pos[0]] = d0
+        directions[objs_sorted_by_pos[0]] = 1.0
+        
+        # Distribute subsequent displacements outwards maintaining order and gap
+        for i in range(1, len(objs_sorted_by_pos)):
+            obj = objs_sorted_by_pos[i]
+            prev_obj = objs_sorted_by_pos[i-1]
+            
+            prev_max = get_max_coord(prev_obj, axis_idx)
+            curr_min = get_min_coord(obj, axis_idx)
+            
+            # Adaptive gap based on bounding box dimensions of adjacent parts
+            size_prev = prev_max - get_min_coord(prev_obj, axis_idx)
+            size_curr = get_max_coord(obj, axis_idx) - curr_min
+            gap = max(base_gap, 0.15 * (size_prev + size_curr))
+            
+            d_prev = displacements[prev_obj]
+            d_curr = max(d_prev, d_prev + (prev_max - curr_min) + gap)
+            displacements[obj] = d_curr
+            directions[obj] = 1.0
+            
+        # Delay order: outermost first (highest max coordinate starts first)
         sorted_objects = sorted(
             all_objects,
             key=lambda o: get_max_coord(o, axis_idx),
             reverse=True
         )
-        # Assign displacements: outermost (first in sorted_objects) gets max_disp, innermost gets min_disp
-        for idx, obj in enumerate(sorted_objects):
-            if num_parts <= 1:
-                displacements[obj] = max_disp
-            else:
-                group_factor = (num_parts - 1 - idx) / (num_parts - 1)
-                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = 1.0
         
     elif direction_mode == 'NEG':
-        # Delay order: outermost first in negative direction (lowest min coordinate starts first)
+        # Sort objects by original center along the axis ascending (left to right)
+        objs_sorted_by_pos = sorted(
+            all_objects,
+            key=lambda o: o_center(o, axis_idx)
+        )
+        
+        n = len(objs_sorted_by_pos)
+        # Innermost is the last element (moves least in NEG direction). Get its clearance displacement.
+        dn = find_clearance_displacement(objs_sorted_by_pos[-1], axis_idx, -1.0, camera, bpy.context.scene, assembly_scale)
+        displacements[objs_sorted_by_pos[-1]] = dn
+        directions[objs_sorted_by_pos[-1]] = -1.0
+        
+        # Distribute subsequent displacements outwards (moving right to left)
+        for i in range(n - 2, -1, -1):
+            obj = objs_sorted_by_pos[i]
+            next_obj = objs_sorted_by_pos[i+1]
+            
+            curr_max = get_max_coord(obj, axis_idx)
+            next_min = get_min_coord(next_obj, axis_idx)
+            
+            # Adaptive gap based on bounding box dimensions of adjacent parts
+            size_curr = curr_max - get_min_coord(obj, axis_idx)
+            size_next = get_max_coord(next_obj, axis_idx) - next_min
+            gap = max(base_gap, 0.15 * (size_curr + size_next))
+            
+            d_next = displacements[next_obj]
+            d_curr = max(d_next, d_next + (curr_max - next_min) + gap)
+            displacements[obj] = d_curr
+            directions[obj] = -1.0
+            
+        # Delay order: outermost first in negative (lowest min coordinate starts first)
         sorted_objects = sorted(
             all_objects,
             key=lambda o: get_min_coord(o, axis_idx),
             reverse=False
         )
-        # Assign displacements: outermost in negative (first in sorted_objects) gets max_disp, innermost gets min_disp
-        for idx, obj in enumerate(sorted_objects):
-            if num_parts <= 1:
-                displacements[obj] = max_disp
-            else:
-                group_factor = (num_parts - 1 - idx) / (num_parts - 1)
-                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = -1.0
         
     else:  # BOTH (bidirectional) mode
-        # Bidirectional: positive components move positive, negative move negative relative to center
-        pos_group = [obj for obj in all_objects if (1.0 if obj.location[axis_idx] >= global_center_val else -1.0) == 1.0]
-        pos_sorted = sorted(pos_group, key=lambda o: get_sorting_key(o, axis_idx), reverse=False)
-        num_pos = len(pos_sorted)
-        for idx, obj in enumerate(pos_sorted):
-            if num_pos <= 1:
-                displacements[obj] = max_disp
-            else:
-                group_factor = idx / (num_pos - 1)
-                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = 1.0
+        pos_group = [obj for obj in all_objects if o_center(obj, axis_idx) >= global_center_val]
+        neg_group = [obj for obj in all_objects if o_center(obj, axis_idx) < global_center_val]
+        
+        # Calculate positive side displacements (outward from center)
+        if pos_group:
+            pos_sorted = sorted(pos_group, key=lambda o: o_center(o, axis_idx))
+            # Innermost of positive group is pos_sorted[0]
+            d0 = find_clearance_displacement(pos_sorted[0], axis_idx, 1.0, camera, bpy.context.scene, assembly_scale)
+            displacements[pos_sorted[0]] = d0
+            directions[pos_sorted[0]] = 1.0
             
-        neg_group = [obj for obj in all_objects if (1.0 if obj.location[axis_idx] >= global_center_val else -1.0) == -1.0]
-        neg_sorted = sorted(neg_group, key=lambda o: get_sorting_key(o, axis_idx), reverse=True)
-        num_neg = len(neg_sorted)
-        for idx, obj in enumerate(neg_sorted):
-            if num_neg <= 1:
-                displacements[obj] = max_disp
-            else:
-                group_factor = idx / (num_neg - 1)
-                displacements[obj] = min_disp + group_factor * (max_disp - min_disp)
-            directions[obj] = -1.0
+            for i in range(1, len(pos_sorted)):
+                obj = pos_sorted[i]
+                prev_obj = pos_sorted[i-1]
+                prev_max = get_max_coord(prev_obj, axis_idx)
+                curr_min = get_min_coord(obj, axis_idx)
+                
+                # Adaptive gap based on bounding box dimensions of adjacent parts
+                size_prev = prev_max - get_min_coord(prev_obj, axis_idx)
+                size_curr = get_max_coord(obj, axis_idx) - curr_min
+                gap = max(base_gap, 0.15 * (size_prev + size_curr))
+                
+                d_prev = displacements[prev_obj]
+                d_curr = max(d_prev, d_prev + (prev_max - curr_min) + gap)
+                displacements[obj] = d_curr
+                directions[obj] = 1.0
+                
+        # Calculate negative side displacements (outward from center)
+        if neg_group:
+            neg_sorted = sorted(neg_group, key=lambda o: o_center(o, axis_idx))
+            # Innermost of negative group is neg_sorted[-1]
+            n_neg = len(neg_sorted)
+            dn = find_clearance_displacement(neg_sorted[-1], axis_idx, -1.0, camera, bpy.context.scene, assembly_scale)
+            displacements[neg_sorted[-1]] = dn
+            directions[neg_sorted[-1]] = -1.0
             
-        # Delay order: furthest from center (on both sides) starts first to prevent collisions
+            for i in range(n_neg - 2, -1, -1):
+                obj = neg_sorted[i]
+                next_obj = neg_sorted[i+1]
+                curr_max = get_max_coord(obj, axis_idx)
+                next_min = get_min_coord(next_obj, axis_idx)
+                
+                # Adaptive gap based on bounding box dimensions of adjacent parts
+                size_curr = curr_max - get_min_coord(obj, axis_idx)
+                size_next = get_max_coord(next_obj, axis_idx) - next_min
+                gap = max(base_gap, 0.15 * (size_curr + size_next))
+                
+                d_next = displacements[next_obj]
+                d_curr = max(d_next, d_next + (curr_max - next_min) + gap)
+                displacements[obj] = d_curr
+                directions[obj] = -1.0
+                
+        # Delay order: furthest from center starts first to prevent collisions
         sorted_objects = sorted(
             all_objects, 
-            key=lambda o: abs(get_sorting_key(o, axis_idx) - global_center_val), 
+            key=lambda o: abs(o_center(o, axis_idx) - global_center_val), 
             reverse=True
         )
 
@@ -187,7 +332,7 @@ def create_adaptive_bbox_explosion(axis='Y', direction_mode='BOTH', factor=5.0, 
         scene.frame_set(end_frame)
         
         # Apply displacement along the selected axis
-        displacement = displacements.get(obj, max_disp)
+        displacement = displacements.get(obj, 0.0)
         obj.location[axis_idx] += direction * displacement
         obj.keyframe_insert(data_path="location", index=axis_idx)
         
