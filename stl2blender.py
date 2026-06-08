@@ -882,7 +882,13 @@ def run():
         
         for cam_obj in cameras:
             cam_obj.data.ortho_scale = target_scale
-            print(f"Set target scale for {{cam_obj.name}} to {{target_scale}}")
+            # Calculate distance of camera from origin to dynamically adjust clipping planes
+            cam_dist = cam_obj.location.length
+            # Set camera clip start/end based on maximum dimension and camera distance to prevent clipping
+            # We use a 5.0 * max_dim buffer to be very safe (e.g. for exploded animations)
+            cam_obj.data.clip_start = max(0.1, cam_dist - max_dim * 5.0)
+            cam_obj.data.clip_end = cam_dist + max_dim * 5.0
+            print(f"Set target scale for {{cam_obj.name}} to {{target_scale}}, clip_start={{cam_obj.data.clip_start}}, clip_end={{cam_obj.data.clip_end}}")
             
         # Set the first camera as active
         bpy.context.scene.camera = first_cam
@@ -974,6 +980,11 @@ def run():
             if first_cam:
                 bpy.context.scene.camera = first_cam
                 
+            # Calculate dynamic viewport clip settings based on camera distance and object size
+            cam_dist = first_cam.location.length if first_cam else max_dim * 5.2
+            v_clip_start = max(0.1, cam_dist - max_dim * 5.0)
+            v_clip_end = cam_dist + max_dim * 5.0
+
             for screen in bpy.data.screens:
                 for area in screen.areas:
                     if area.type == 'VIEW_3D':
@@ -981,10 +992,12 @@ def run():
                             if space.type == 'VIEW_3D':
                                 space.shading.type = 'RENDERED'
                                 space.region_3d.view_perspective = 'CAMERA'
+                                space.clip_start = v_clip_start
+                                space.clip_end = v_clip_end
                                 
             # Create autoplay script to force Rendered shading when opened in Blender GUI
             autoplay_script = bpy.data.texts.new(name="autoplay.py")
-            autoplay_script.from_string('''import bpy
+            autoplay_script_content = '''import bpy
 for screen in bpy.data.screens:
     for area in screen.areas:
         if area.type == 'VIEW_3D':
@@ -992,7 +1005,10 @@ for screen in bpy.data.screens:
                 if space.type == 'VIEW_3D':
                     space.shading.type = 'RENDERED'
                     space.region_3d.view_perspective = 'CAMERA'
-''')
+                    space.clip_start = {{v_clip_start}}
+                    space.clip_end = {{v_clip_end}}
+'''
+            autoplay_script.from_string(autoplay_script_content.format(v_clip_start=v_clip_start, v_clip_end=v_clip_end))
             autoplay_script.use_module = True
             print("Created autoplay.py to force Rendered viewport shading on load.")
         except Exception as viewport_err:
