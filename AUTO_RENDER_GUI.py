@@ -28,13 +28,21 @@ def load_config():
     }
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config.json")
+    template_path = os.path.join(script_dir, "config.json.template")
+    
+    selected_path = None
     if os.path.exists(config_path):
+        selected_path = config_path
+    elif os.path.exists(template_path):
+        selected_path = template_path
+        
+    if selected_path:
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(selected_path, "r", encoding="utf-8") as f:
                 user_config = json.load(f)
                 config.update(user_config)
         except Exception as e:
-            print(f"Warning: Failed to load config.json: {e}")
+            print(f"Warning: Failed to load config from {selected_path}: {e}")
     return config
 
 class ConfigEditorDialog(tk.Toplevel):

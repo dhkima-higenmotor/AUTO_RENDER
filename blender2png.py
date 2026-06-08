@@ -33,19 +33,27 @@ def run_render(blend_file, resolution):
     viewport_samples = 64
     use_denoising = True
     
-    # Read config.json
+    # Read config.json or config.json.template
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config.json")
+    template_path = os.path.join(script_dir, "config.json.template")
+    
+    selected_path = None
     if os.path.exists(config_path):
+        selected_path = config_path
+    elif os.path.exists(template_path):
+        selected_path = template_path
+        
+    if selected_path:
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(selected_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
                 blender_exe = config_data.get("blender_exe", "blender")
                 render_samples = config_data.get("render_samples", 512)
                 viewport_samples = config_data.get("viewport_samples", 64)
                 use_denoising = config_data.get("use_denoising", True)
         except Exception as e:
-            print(f"Warning: Failed to load config.json: {e}")
+            print(f"Warning: Failed to load config from {selected_path}: {e}")
     
     print("-" * 40)
     print(f"Starting Render: {os.path.basename(blend_file)}")

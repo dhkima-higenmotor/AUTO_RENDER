@@ -1,9 +1,0 @@
-{
-  "blender_exe": "C:\\Users\\dhkima\\scoop\\apps\\blender\\current\\blender.exe",
-  "render_samples": 512,
-  "viewport_samples": 64,
-  "use_denoising": true,
-  "explode_axis": "Y",
-  "explode_dir_mode": "POS",
-  "explode_duration": 20
-}
