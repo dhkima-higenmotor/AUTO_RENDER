@@ -1,11 +1,12 @@
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 import subprocess
 import threading
 import queue
 import os
 import sys
 import shutil
+import json
 
 # Make the process DPI aware to render sharp system fonts on Windows
 try:
@@ -14,7 +15,199 @@ try:
 except Exception:
     pass
 
-import json
+# ═══════════════════════════════════════════════════════════════════
+# Centralized System Font Definitions (Ensures 100% Absolute Uniformity)
+# ═══════════════════════════════════════════════════════════════════
+SYSTEM_FONT = ("Segoe UI", 9)
+SYSTEM_FONT_BOLD = ("Segoe UI", 9, "bold")
+SYSTEM_FONT_LARGE_BOLD = ("Segoe UI", 10, "bold")
+
+# ═══════════════════════════════════════════════════════════════════
+# Color Palette — Slate + Indigo (Premium Light)
+# ═══════════════════════════════════════════════════════════════════
+COLORS = {
+    "bg":         "#f8fafc",   # Slate-50      — root background & frame background
+    "bg_light":   "#f8fafc",   # Unify card background with root bg
+    "bg_dark":    "#f1f5f9",   # Slate-100     — text inputs / treeview
+    "fg":         "#0f172a",   # Slate-900     — primary text
+    "fg_dim":     "#94a3b8",   # Slate-400     — disabled text
+    "fg_sub":     "#64748b",   # Slate-500     — secondary text
+    "accent":     "#6366f1",   # Indigo-500    — primary accent / selection bg
+    "green":      "#34d399",   # Emerald-400   — success hover
+    "green_dim":  "#059669",   # Emerald-600   — success button bg
+    "red":        "#f43f5e",   # Rose-500      — error / danger
+    "peach":      "#f59e0b",   # Amber-500     — warning
+    "border":     "#e2e8f0",   # Slate-200     — borders
+    "surface2":   "#f1f5f9",   # Slate-100     — hover / selection
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# ttk Style Definitions
+# ═══════════════════════════════════════════════════════════════════
+def setup_styles():
+    """Configure all ttk widget styles using the Slate + Indigo palette."""
+    style = ttk.Style()
+    style.theme_use("clam")
+
+    C = COLORS
+
+    # ── Frame ──
+    style.configure("TFrame", background=C["bg"])
+    style.configure("Card.TFrame", background=C["bg_light"])
+
+    # ── LabelFrame ──
+    style.configure("TLabelframe",
+        background=C["bg_light"],
+        bordercolor=C["border"],
+        lightcolor=C["bg_light"],
+        darkcolor=C["bg_light"])
+    style.configure("TLabelframe.Label",
+        background=C["bg_light"],
+        foreground=C["accent"],
+        font=SYSTEM_FONT_LARGE_BOLD)
+
+    # ── Label ──
+    style.configure("TLabel",
+        background=C["bg"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT)
+    style.configure("Card.TLabel",
+        background=C["bg_light"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT)
+    style.configure("Path.TLabel",
+        background=C["bg_light"],
+        foreground=C["accent"],
+        font=SYSTEM_FONT)
+    style.configure("Bold.TLabel",
+        background=C["bg"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT_BOLD)
+    style.configure("CardBold.TLabel",
+        background=C["bg_light"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT_BOLD)
+
+    # ── Flat Buttons Configuration ──
+    # Default Button
+    style.configure("TButton",
+        background=C["border"],
+        foreground=C["fg"],
+        bordercolor=C["border"],
+        lightcolor=C["border"],
+        darkcolor=C["border"],
+        font=SYSTEM_FONT,
+        padding=(6, 4))
+    style.map("TButton",
+        background=[("active", C["surface2"]), ("pressed", C["border"])],
+        foreground=[("disabled", C["fg_dim"])],
+        bordercolor=[("active", C["border"])])
+
+    # Accent Button (Emerald)
+    style.configure("Accent.TButton",
+        background=C["green_dim"],
+        foreground="#ffffff",
+        bordercolor=C["green_dim"],
+        lightcolor=C["green_dim"],
+        darkcolor=C["green_dim"],
+        font=SYSTEM_FONT_BOLD,
+        padding=(6, 4))
+    style.map("Accent.TButton",
+        background=[("active", C["green"]), ("pressed", C["green_dim"])],
+        foreground=[("active", "#ffffff")])
+
+    # Info Button (Indigo)
+    style.configure("Info.TButton",
+        background=C["accent"],
+        foreground="#ffffff",
+        bordercolor=C["accent"],
+        lightcolor=C["accent"],
+        darkcolor=C["accent"],
+        font=SYSTEM_FONT_BOLD,
+        padding=(6, 4))
+    style.map("Info.TButton",
+        background=[("active", "#818cf8"), ("pressed", C["accent"])])
+
+    # Danger Button (Rose)
+    style.configure("Danger.TButton",
+        background=C["border"],
+        foreground=C["red"],
+        bordercolor=C["border"],
+        lightcolor=C["border"],
+        darkcolor=C["border"],
+        font=SYSTEM_FONT_BOLD,
+        padding=(6, 4))
+    style.map("Danger.TButton",
+        background=[("active", "#fff1f2")],
+        foreground=[("active", "#e11d48")])
+
+    # ── Radiobutton ──
+    style.configure("TRadiobutton",
+        background=C["bg"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT,
+        indicatorcolor=C["border"])
+    style.map("TRadiobutton",
+        background=[("active", C["bg"])],
+        indicatorcolor=[("selected", C["accent"])])
+
+    style.configure("Card.TRadiobutton",
+        background=C["bg_light"],
+        foreground=C["fg"],
+        font=SYSTEM_FONT,
+        indicatorcolor=C["border"])
+    style.map("Card.TRadiobutton",
+        background=[("active", C["bg_light"])],
+        indicatorcolor=[("selected", C["accent"])])
+
+    # ── Entry ──
+    style.configure("TEntry",
+        fieldbackground=C["bg_dark"],
+        foreground=C["fg"],
+        bordercolor=C["border"],
+        lightcolor=C["border"],
+        darkcolor=C["border"],
+        insertcolor=C["fg"],
+        font=SYSTEM_FONT)
+
+    # ── Spinbox ──
+    style.configure("TSpinbox",
+        fieldbackground=C["bg_dark"],
+        foreground=C["fg"],
+        bordercolor=C["border"],
+        lightcolor=C["border"],
+        darkcolor=C["border"],
+        arrowcolor=C["fg"],
+        insertcolor=C["fg"],
+        font=SYSTEM_FONT)
+
+    # ── Treeview ──
+    style.configure("Treeview",
+        background=C["bg_dark"],
+        foreground=C["fg"],
+        fieldbackground=C["bg_dark"],
+        bordercolor=C["border"],
+        font=SYSTEM_FONT,
+        rowheight=26)
+    style.configure("Treeview.Heading",
+        background=C["border"],
+        foreground=C["fg_sub"],
+        bordercolor=C["border"],
+        font=SYSTEM_FONT_BOLD,
+        padding=(8, 4))
+    style.map("Treeview",
+        background=[("selected", "#e0e7ff")],
+        foreground=[("selected", "#3730a3")])
+
+    # ── Scrollbar ──
+    style.configure("TScrollbar",
+        background=C["border"],
+        troughcolor=C["bg_dark"],
+        bordercolor=C["bg_dark"],
+        arrowcolor=C["fg_dim"])
+
+    return style
+
 
 def load_config():
     config = {
@@ -59,9 +252,15 @@ def load_config():
             print(f"Warning: Failed to load config from {selected_path}: {e}")
     return config
 
+
+# ═══════════════════════════════════════════════════════════════════
+# Dialog Classes
+# ═══════════════════════════════════════════════════════════════════
+
 class TipDialog(tk.Toplevel):
     def __init__(self, parent, title, text):
         super().__init__(parent)
+        self.configure(bg=COLORS["bg_light"])
         self.title(title)
         self.geometry("500x320")
         self.resizable(True, True)
@@ -79,11 +278,16 @@ class TipDialog(tk.Toplevel):
         y = parent_y + (parent_h - 320) // 2
         self.geometry(f"+{x}+{y}")
         
-        # Text widget for description (word wrapped, read-only)
-        frame_text = tk.Frame(self)
+        frame_text = ttk.Frame(self, style="Card.TFrame")
         frame_text.pack(fill="both", expand=True, padx=15, pady=(15, 10))
         
-        txt = tk.Text(frame_text, wrap="word", font="TkDefaultFont", bg=self.cget("bg"), relief="flat", highlightthickness=0)
+        # [Updated] Centralized SYSTEM_FONT variable applied to the text widget
+        txt = tk.Text(frame_text, wrap="word",
+            bg=COLORS["bg_dark"], fg=COLORS["fg"],
+            insertbackground=COLORS["fg"],
+            selectbackground=COLORS["accent"], selectforeground="#ffffff",
+            relief="flat", highlightthickness=0,
+            font=SYSTEM_FONT)
         txt.insert("1.0", text)
         txt.config(state="disabled")
         txt.pack(side="left", fill="both", expand=True)
@@ -92,18 +296,18 @@ class TipDialog(tk.Toplevel):
         txt.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         
-        # OK Button to close
-        btn_ok = tk.Button(self, text="Close", width=12, command=self.destroy)
+        btn_ok = ttk.Button(self, text="Close", width=10, command=self.destroy)
         btn_ok.pack(pady=(0, 15))
         
-        # Close on Escape or Return
         self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<Return>", lambda e: self.destroy())
+
 
 class ConfigEditorDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
+        self.configure(bg=COLORS["bg_light"])
         self.title("Configuration Editor")
         
         width = 800
@@ -114,7 +318,6 @@ class ConfigEditorDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         
-        # Center the dialog relative to parent
         parent_x = parent.winfo_rootx()
         parent_y = parent.winfo_rooty()
         parent_w = parent.winfo_width()
@@ -124,65 +327,72 @@ class ConfigEditorDialog(tk.Toplevel):
         y = parent_y + (parent_h - height) // 2
         self.geometry(f"+{x}+{y}")
         
-        # Buttons frame at bottom (pack this first so it stays at the bottom)
-        frame_buttons = tk.Frame(self)
-        frame_buttons.pack(side="bottom", fill="x", pady=10)
+        frame_buttons = ttk.Frame(self, style="Card.TFrame")
+        frame_buttons.pack(side="bottom", fill="x", pady=10, padx=10)
         
-        btn_save = tk.Button(frame_buttons, text="Save", width=12, command=self.on_save, bg="#4CAF50", fg="white", activebackground="#45a049")
-        btn_save.pack(side="right", padx=10)
+        btn_save = ttk.Button(frame_buttons, text="Save", width=10,
+            command=self.on_save, style="Accent.TButton")
+        btn_save.pack(side="right", padx=5)
         
-        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=12, command=self.destroy)
-        btn_cancel.pack(side="right", padx=10)
+        btn_cancel = ttk.Button(frame_buttons, text="Cancel", width=10,
+            command=self.destroy)
+        btn_cancel.pack(side="right", padx=5)
         
-        btn_tip = tk.Button(frame_buttons, text="Tip", width=12, command=self.show_tip, bg="#008CBA", fg="white", activebackground="#007B9A")
-        btn_tip.pack(side="right", padx=10)
+        btn_tip = ttk.Button(frame_buttons, text="Tip", width=10,
+            command=self.show_tip, style="Info.TButton")
+        btn_tip.pack(side="right", padx=5)
         
-        # Details frame just above the buttons
-        self.frame_details = tk.LabelFrame(self, text="Selected Value Details (Word Wrapped & Editable)", padx=10, pady=5)
+        self.frame_details = ttk.LabelFrame(self,
+            text="Selected Value Details (Word Wrapped & Editable)",
+            padding=(10, 5))
         self.frame_details.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
         
-        self.lbl_selected_key = tk.Label(self.frame_details, text="Select a key from the list above to view/edit", font=("TkDefaultFont", 9, "bold"), anchor="w")
+        self.lbl_selected_key = ttk.Label(self.frame_details,
+            text="Select a key from the list above to view/edit",
+            style="CardBold.TLabel", anchor="w")
         self.lbl_selected_key.pack(fill="x", pady=(0, 5))
         
-        # Text widget for multiline editing
-        self.txt_value = tk.Text(self.frame_details, height=5, wrap="word", font="TkDefaultFont")
+        # [Updated] Centralized SYSTEM_FONT variable applied
+        self.txt_value = tk.Text(self.frame_details, height=5, wrap="word",
+            bg=COLORS["bg_dark"], fg=COLORS["fg"],
+            insertbackground=COLORS["fg"],
+            selectbackground=COLORS["accent"], selectforeground="#ffffff",
+            relief="flat",
+            highlightthickness=1, highlightbackground=COLORS["border"],
+            highlightcolor=COLORS["accent"],
+            font=SYSTEM_FONT)
         self.txt_value.pack(side="left", fill="both", expand=True)
         self.txt_value.config(state="disabled")
         
-        txt_scrollbar = ttk.Scrollbar(self.frame_details, orient="vertical", command=self.txt_value.yview)
+        txt_scrollbar = ttk.Scrollbar(self.frame_details, orient="vertical",
+            command=self.txt_value.yview)
         self.txt_value.configure(yscrollcommand=txt_scrollbar.set)
         txt_scrollbar.pack(side="right", fill="y")
         
-        # Tree and scrollbar frame filling the top remaining space
-        frame_tree = tk.Frame(self)
+        frame_tree = ttk.Frame(self, style="Card.TFrame")
         frame_tree.pack(side="top", fill="both", expand=True, padx=10, pady=10)
         
-        # Treeview setup
         self.tree = ttk.Treeview(frame_tree, columns=("Value"), show="tree headings")
         self.tree.heading("#0", text="Key")
         self.tree.heading("Value", text="Value")
         self.tree.column("#0", width=200, anchor="w")
         self.tree.column("Value", width=550, anchor="w")
         
-        # Scrollbars
         scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
         self.tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Load config.json
         self.config_data = load_config()
         self.populate_tree()
         
-        # Event bindings
         self.current_selected_key = None
         self.tree.bind("<<TreeviewSelect>>", self.on_select_item)
         self.txt_value.bind("<KeyRelease>", self.on_text_change)
         self.tree.bind("<Double-1>", self.on_double_click)
         
     def populate_tree(self):
-        # Clear existing
         for item in self.tree.get_children():
             self.tree.delete(item)
             
@@ -269,7 +479,12 @@ class ConfigEditorDialog(tk.Toplevel):
             
         x, y, w, h = bbox
         
-        entry = tk.Entry(self.tree)
+        # [Updated] Centralized SYSTEM_FONT variable applied
+        entry = tk.Entry(self.tree,
+            bg=COLORS["bg_dark"], fg=COLORS["fg"],
+            insertbackground=COLORS["fg"],
+            selectbackground=COLORS["accent"], selectforeground="#ffffff",
+            relief="flat", font=SYSTEM_FONT)
         entry.insert(0, self.tree.set(item_id, "Value"))
         entry.select_range(0, tk.END)
         entry.focus_set()
@@ -308,8 +523,8 @@ class ConfigEditorDialog(tk.Toplevel):
             editing = False
             entry.destroy()
             
-            # Sync details text area
             if self.current_selected_key == item_id:
+                self.txt_value.config(state="normal")
                 self.txt_value.delete("1.0", tk.END)
                 self.txt_value.insert("1.0", str(typed_val))
             
@@ -371,21 +586,21 @@ class ConfigEditorDialog(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save config.json: {e}")
 
+
 class AxisSelectionDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
         self.result = None
+        self.configure(bg=COLORS["bg_light"])
         
         self.title("Select Explode Axis & Direction")
         self.geometry("360x260")
         self.resizable(False, False)
         
-        # Center the dialog relative to parent
         self.transient(parent)
         self.grab_set()
         
-        # Calculate center position
         parent_x = parent.winfo_rootx()
         parent_y = parent.winfo_rooty()
         parent_w = parent.winfo_width()
@@ -395,43 +610,43 @@ class AxisSelectionDialog(tk.Toplevel):
         y = parent_y + (parent_h - 260) // 2
         self.geometry(f"+{x}+{y}")
         
-        # UI Elements
-        # Label for Axis
-        lbl_msg = tk.Label(self, text="Select the disassembly (explode) axis:", font=("TkDefaultFont", 10, "bold"))
+        lbl_msg = ttk.Label(self, text="Select the disassembly (explode) axis:",
+            style="Bold.TLabel")
         lbl_msg.pack(pady=(15, 5))
         
         config = load_config()
-        # Radiobuttons for X, Y, Z
         self.axis_var = tk.StringVar(value=config.get("explode_axis", "Y"))
-        frame_radio = tk.Frame(self)
+        frame_radio = ttk.Frame(self, style="Card.TFrame")
         frame_radio.pack(pady=5)
         
         for axis in ["X", "Y", "Z"]:
-            rb = tk.Radiobutton(frame_radio, text=f"{axis} Axis", variable=self.axis_var, value=axis, font=("TkDefaultFont", 10))
+            rb = ttk.Radiobutton(frame_radio, text=f"{axis} Axis",
+                variable=self.axis_var, value=axis, style="Card.TRadiobutton")
             rb.pack(side="left", padx=15)
 
-        # Label for Direction Mode
-        lbl_dir = tk.Label(self, text="Select the explosion direction:", font=("TkDefaultFont", 10, "bold"))
+        lbl_dir = ttk.Label(self, text="Select the explosion direction:",
+            style="Bold.TLabel")
         lbl_dir.pack(pady=(15, 5))
 
-        # Radiobuttons for Direction (+, -)
         self.dir_var = tk.StringVar(value=config.get("explode_dir_mode", "POS"))
-        frame_dir = tk.Frame(self)
+        frame_dir = ttk.Frame(self, style="Card.TFrame")
         frame_dir.pack(pady=5)
 
         directions = [("+ (Positive)", "POS"), ("- (Negative)", "NEG")]
         for text, value in directions:
-            rb = tk.Radiobutton(frame_dir, text=text, variable=self.dir_var, value=value, font=("TkDefaultFont", 10))
+            rb = ttk.Radiobutton(frame_dir, text=text,
+                variable=self.dir_var, value=value, style="Card.TRadiobutton")
             rb.pack(side="left", padx=20)
             
-        # Buttons Frame
-        frame_buttons = tk.Frame(self)
+        frame_buttons = ttk.Frame(self, style="Card.TFrame")
         frame_buttons.pack(pady=20)
         
-        btn_ok = tk.Button(frame_buttons, text="OK", width=10, command=self.on_ok, bg="#4CAF50", fg="white", activebackground="#45a049")
+        btn_ok = ttk.Button(frame_buttons, text="OK", width=10,
+            command=self.on_ok, style="Accent.TButton")
         btn_ok.pack(side="left", padx=10)
         
-        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=10, command=self.on_cancel)
+        btn_cancel = ttk.Button(frame_buttons, text="Cancel", width=10,
+            command=self.on_cancel)
         btn_cancel.pack(side="left", padx=10)
         
         self.protocol("WM_DELETE_WINDOW", self.on_cancel)
@@ -445,21 +660,21 @@ class AxisSelectionDialog(tk.Toplevel):
         self.result = None
         self.destroy()
 
+
 class DurationSelectionDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
         self.result = None
+        self.configure(bg=COLORS["bg_light"])
         
         self.title("Select Explode Duration")
         self.geometry("320x180")
         self.resizable(False, False)
         
-        # Center the dialog relative to parent
         self.transient(parent)
         self.grab_set()
         
-        # Calculate center position
         parent_x = parent.winfo_rootx()
         parent_y = parent.winfo_rooty()
         parent_w = parent.winfo_width()
@@ -469,32 +684,32 @@ class DurationSelectionDialog(tk.Toplevel):
         y = parent_y + (parent_h - 180) // 2
         self.geometry(f"+{x}+{y}")
         
-        # UI Elements
-        lbl_msg = tk.Label(self, text="Set disassembly duration (seconds):", font=("TkDefaultFont", 10, "bold"))
+        lbl_msg = ttk.Label(self, text="Set disassembly duration (seconds):",
+            style="Bold.TLabel")
         lbl_msg.pack(pady=15)
         
-        # Entry for duration
         config = load_config()
         self.duration_var = tk.StringVar(value=str(config.get("explode_duration", 20)))
         
-        frame_input = tk.Frame(self)
+        frame_input = ttk.Frame(self, style="Card.TFrame")
         frame_input.pack(pady=5)
         
-        # Spinbox
-        self.spin = tk.Spinbox(frame_input, from_=1, to=3600, textvariable=self.duration_var, width=10, font=("TkDefaultFont", 10))
+        self.spin = ttk.Spinbox(frame_input, from_=1, to=3600,
+            textvariable=self.duration_var, width=10)
         self.spin.pack(side="left", padx=5)
         
-        lbl_sec = tk.Label(frame_input, text="seconds", font=("TkDefaultFont", 10))
+        lbl_sec = ttk.Label(frame_input, text="seconds", style="Card.TLabel")
         lbl_sec.pack(side="left")
         
-        # Buttons Frame
-        frame_buttons = tk.Frame(self)
+        frame_buttons = ttk.Frame(self, style="Card.TFrame")
         frame_buttons.pack(pady=15)
         
-        btn_ok = tk.Button(frame_buttons, text="OK", width=10, command=self.on_ok, bg="#4CAF50", fg="white", activebackground="#45a049")
+        btn_ok = ttk.Button(frame_buttons, text="OK", width=10,
+            command=self.on_ok, style="Accent.TButton")
         btn_ok.pack(side="left", padx=10)
         
-        btn_cancel = tk.Button(frame_buttons, text="Cancel", width=10, command=self.on_cancel)
+        btn_cancel = ttk.Button(frame_buttons, text="Cancel", width=10,
+            command=self.on_cancel)
         btn_cancel.pack(side="left", padx=10)
         
         self.protocol("WM_DELETE_WINDOW", self.on_cancel)
@@ -515,14 +730,18 @@ class DurationSelectionDialog(tk.Toplevel):
         self.result = None
         self.destroy()
 
+
+# ═══════════════════════════════════════════════════════════════════
+# Main Application
+# ═══════════════════════════════════════════════════════════════════
+
 class AutoRenderApp:
     def __init__(self, root):
         self.root = root
-        self.root.option_add("*Font", "TkDefaultFont")
+        self.root.option_add("*Font", SYSTEM_FONT)
         self.root.title("Auto Render GUI")
-        self.root.geometry("1000x520")
+        self.root.geometry("800x500")
         
-        # Variables
         self.selected_file_path = tk.StringVar()
         self.selected_file_path.set("No file selected")
         self.selected_blend_path = tk.StringVar()
@@ -530,70 +749,95 @@ class AutoRenderApp:
         self.resolution_var = tk.StringVar(value="800x600")
         self.log_queue = queue.Queue()
         
-        # UI Setup
         self.setup_ui()
-        
-        # Start queue poller
         self.root.after(100, self.process_log_queue)
 
     def setup_ui(self):
         # 1. File Selection Frame
-        frame_file = tk.LabelFrame(self.root, text="Target File", padx=8, pady=4)
+        frame_file = ttk.LabelFrame(self.root, text="Target File", padding=(8, 4))
         frame_file.pack(fill="x", padx=10, pady=2)
         
-        lbl_file = tk.Label(frame_file, textvariable=self.selected_file_path, fg="blue", wraplength=800, anchor="w")
+        lbl_file = ttk.Label(frame_file, textvariable=self.selected_file_path,
+            style="Path.TLabel", wraplength=760, anchor="w")
         lbl_file.pack(side="left", fill="x", expand=True)
         
-        btn_browse = tk.Button(frame_file, text="Choose SLDASM", command=self.choose_file)
+        btn_browse = ttk.Button(frame_file, text="Choose SLDASM", width=20,
+            command=self.choose_file)
         btn_browse.pack(side="right")
 
         # 1.5. Blend File Selection Frame
-        frame_blend = tk.LabelFrame(self.root, text="blend File", padx=8, pady=4)
+        frame_blend = ttk.LabelFrame(self.root, text="blend File", padding=(8, 4))
         frame_blend.pack(fill="x", padx=10, pady=2)
         
-        lbl_blend = tk.Label(frame_blend, textvariable=self.selected_blend_path, fg="blue", wraplength=800, anchor="w")
+        lbl_blend = ttk.Label(frame_blend, textvariable=self.selected_blend_path,
+            style="Path.TLabel", wraplength=760, anchor="w")
         lbl_blend.pack(side="left", fill="x", expand=True)
         
-        btn_browse_blend = tk.Button(frame_blend, text="Choose BLEND", command=self.choose_blend_file)
+        btn_browse_blend = ttk.Button(frame_blend, text="Choose BLEND", width=20,
+            command=self.choose_blend_file)
         btn_browse_blend.pack(side="right")
         
         # 2. Action Buttons Frame
-        frame_actions = tk.Frame(self.root, padx=10, pady=4)
+        frame_actions = ttk.Frame(self.root, padding=(10, 4))
         frame_actions.pack(fill="x", padx=10, pady=2)
         
-        self.btn_stl = tk.Button(frame_actions, text="Make STL", command=self.run_make_stl, width=15, height=1, state="disabled")
-        self.btn_stl.pack(side="left", padx=4)
+        self.btn_stl = ttk.Button(frame_actions, text="Make STL",
+            command=self.run_make_stl, width=12, state="disabled")
+        self.btn_stl.pack(side="left", padx=2)
         
-        self.btn_blend = tk.Button(frame_actions, text="Make BLEND", command=self.run_make_blend, width=15, height=1, state="disabled")
-        self.btn_blend.pack(side="left", padx=4)
+        self.btn_blend = ttk.Button(frame_actions, text="Make BLEND",
+            command=self.run_make_blend, width=14, state="disabled")
+        self.btn_blend.pack(side="left", padx=2)
         
-        self.btn_open = tk.Button(frame_actions, text="Open BLEND", command=self.run_open_blend, width=15, height=1, state="disabled")
-        self.btn_open.pack(side="left", padx=4)
+        self.btn_open = ttk.Button(frame_actions, text="Open BLEND",
+            command=self.run_open_blend, width=14, state="disabled")
+        self.btn_open.pack(side="left", padx=2)
         
-        # Render UI
-        self.btn_render = tk.Button(frame_actions, text="RENDER", command=self.run_render, width=12, height=1, state="disabled", bg="#dddddd")
-        self.btn_render.pack(side="left", padx=4)
+        self.btn_render = ttk.Button(frame_actions, text="RENDER",
+            command=self.run_render, width=10, state="disabled")
+        self.btn_render.pack(side="left", padx=2)
         
-        self.btn_explode = tk.Button(frame_actions, text="EXPLODE", command=self.run_explode, width=12, height=1, state="disabled", bg="#dddddd")
-        self.btn_explode.pack(side="left", padx=4)
+        self.btn_explode = ttk.Button(frame_actions, text="EXPLODE",
+            command=self.run_explode, width=10, state="disabled")
+        self.btn_explode.pack(side="left", padx=2)
         
-        btn_exit = tk.Button(frame_actions, text="EXIT", command=self.root.quit, width=10, height=1, fg="red")
-        btn_exit.pack(side="right", padx=4)
+        btn_exit = ttk.Button(frame_actions, text="EXIT",
+            command=self.root.quit, width=8, style="Danger.TButton")
+        btn_exit.pack(side="right", padx=2)
         
-        btn_help = tk.Button(frame_actions, text="HELP", command=self.open_help, width=10, height=1)
-        btn_help.pack(side="right", padx=4)
+        btn_help = ttk.Button(frame_actions, text="HELP",
+            command=self.open_help, width=8, style="Info.TButton")
+        btn_help.pack(side="right", padx=2)
         
-        btn_config = tk.Button(frame_actions, text="CONFIG", command=self.open_config, width=10, height=1)
-        btn_config.pack(side="right", padx=4)
+        btn_config = ttk.Button(frame_actions, text="CONFIG",
+            command=self.open_config, width=8)
+        btn_config.pack(side="right", padx=2)
         
-        # 3. Log Area
-        frame_log = tk.LabelFrame(self.root, text="Output Log", padx=8, pady=4)
+        # 3. Output Log Area
+        frame_log = ttk.LabelFrame(self.root, text="Output Log", padding=(8, 4))
         frame_log.pack(fill="both", expand=True, padx=10, pady=2)
         
-        self.txt_log = scrolledtext.ScrolledText(frame_log, state='disabled', height=10, font="TkDefaultFont")
-        self.txt_log.pack(fill="both", expand=True)
-        # Define tag for error text
-        self.txt_log.tag_config("stderr", foreground="red")
+        log_inner = ttk.Frame(frame_log, style="Card.TFrame")
+        log_inner.pack(fill="both", expand=True)
+        
+        # [Updated] Centralized SYSTEM_FONT variable applied
+        self.txt_log = tk.Text(log_inner, state="disabled", height=10,
+            bg=COLORS["bg_dark"], fg=COLORS["fg"],
+            insertbackground=COLORS["fg"],
+            selectbackground=COLORS["accent"], selectforeground="#ffffff",
+            relief="flat",
+            highlightthickness=1, highlightbackground=COLORS["border"],
+            highlightcolor=COLORS["accent"],
+            font=SYSTEM_FONT)
+        
+        log_scrollbar = ttk.Scrollbar(log_inner, orient="vertical",
+            command=self.txt_log.yview)
+        self.txt_log.configure(yscrollcommand=log_scrollbar.set)
+        
+        self.txt_log.pack(side="left", fill="both", expand=True)
+        log_scrollbar.pack(side="right", fill="y")
+        
+        self.txt_log.tag_config("stderr", foreground=COLORS["red"])
 
     def log(self, message, is_error=False):
         self.log_queue.put((message, is_error))
@@ -629,7 +873,6 @@ class AutoRenderApp:
             self.selected_file_path.set(file_path)
             self.btn_stl.config(state="normal")
             
-            # Check if likely ready for blend (if folder exists)
             stl_dir = os.path.splitext(file_path)[0] + "__STL"
             if os.path.isdir(stl_dir):
                 self.btn_blend.config(state="normal")
@@ -660,18 +903,15 @@ class AutoRenderApp:
             self.btn_explode.config(state="normal")
 
     def run_command(self, cmd):
-        """Runs a subprocess and streams output to log."""
         try:
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                # text=True, # Removing text mode to handle bytes manually
                 bufsize=1,
                 cwd=os.path.dirname(os.path.abspath(__file__)) 
             )
             
-            # Helper to read stream
             def read_stream(stream, is_error):
                 import locale
                 sys_encoding = locale.getpreferredencoding() or 'cp949'
@@ -688,7 +928,6 @@ class AutoRenderApp:
                         self.log(decoded_line, is_error=is_error)
                 stream.close()
 
-            # Create threads to read stdout and stderr simultaneously
             t_out = threading.Thread(target=read_stream, args=(process.stdout, False))
             t_err = threading.Thread(target=read_stream, args=(process.stderr, True))
             
@@ -726,10 +965,8 @@ class AutoRenderApp:
         
         def task():
             ret = self.run_command(cmd)
-            # Re-enable STL button
             self.root.after(0, lambda: self.btn_stl.config(state="normal"))
             
-            # If success, check directory and enable Blend button
             if ret == 0:
                 derived_stl_dir = os.path.splitext(file_path)[0] + "__STL"
                 if os.path.isdir(derived_stl_dir):
@@ -743,7 +980,6 @@ class AutoRenderApp:
 
     def run_make_blend(self):
         file_path = self.selected_file_path.get()
-        # Derive directory
         stl_dir = os.path.splitext(file_path)[0] + "__STL"
         
         if not os.path.isdir(stl_dir):
@@ -786,7 +1022,6 @@ class AutoRenderApp:
         self.log(f"Starting Render: {os.path.basename(blend_file)}")
         self.log("Resolution: Keep blend file settings")
         
-        # Call blender2png.py as CLI without --res override to keep blend settings
         cmd = [sys.executable, "blender2png.py", blend_file]
         
         def task():
@@ -797,14 +1032,12 @@ class AutoRenderApp:
         threading.Thread(target=task, daemon=True).start()
 
     def run_explode(self):
-        # 1. Ask user for axis & direction mode
         dialog = AxisSelectionDialog(self.root)
         if not dialog.result:
             self.log("Explode operation cancelled by user.")
             return
         selected_axis, selected_dir_mode = dialog.result
 
-        # 2. Ask user for duration
         duration_dialog = DurationSelectionDialog(self.root)
         selected_duration = duration_dialog.result
         if not selected_duration:
@@ -825,7 +1058,6 @@ class AutoRenderApp:
         self.log("-" * 40)
         self.log(f"Starting Explode Render Sequence: {os.path.basename(blend_file)} (Axis: {selected_axis}, Direction: {selected_dir_mode}, Duration: {selected_duration}s)")
         
-        # 1. Copy the blend file with _explode suffix
         explode_blend_file = f"{os.path.splitext(blend_file)[0]}_explode.blend"
         try:
             shutil.copy(blend_file, explode_blend_file)
@@ -836,7 +1068,6 @@ class AutoRenderApp:
             self.btn_explode.config(state="normal")
             return
 
-        # Get Blender Exe Path and explode resolution percentage & renderer settings
         config = load_config()
         blender_exe = config.get("blender_exe", "blender")
         resolution_percentage_explode = config.get("resolution_percentage_explode", 100)
@@ -844,15 +1075,12 @@ class AutoRenderApp:
         compute_device = config.get("compute_device", "GPU")
         cycles_device_type = config.get("cycles_device_type", "OPTIX")
 
-        # Map values to Blender python constants
         mapped_engine = "BLENDER_EEVEE" if render_engine.upper() == "EEVEE" else "CYCLES"
         mapped_device = "GPU" if "GPU" in compute_device.upper() else "CPU"
         mapped_cycles_device_type = cycles_device_type.upper()
 
-        # Create temporary python script for Blender
         temp_script_path = os.path.join(os.path.dirname(explode_blend_file), "_temp_explode_render.py")
         temp_script_path = os.path.normpath(temp_script_path)
-        
         explode_py_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "explode.py"))
         
         script_content = f"""
@@ -860,18 +1088,15 @@ import bpy
 import os
 import sys
 
-# Configure selected axis, direction mode & duration
 os.environ["EXPLODE_AXIS"] = "{selected_axis}"
 os.environ["EXPLODE_DIR_MODE"] = "{selected_dir_mode}"
 os.environ["EXPLODE_DURATION"] = "{selected_duration}"
 
-# Configure Render Settings
 bpy.context.scene.render.engine = '{mapped_engine}'
 bpy.context.scene.cycles.device = '{mapped_device}'
 bpy.context.scene.cycles.samples = 64
 bpy.context.scene.cycles.use_denoising = False
 
-# Configure GPU device type
 try:
     cycles_pref = bpy.context.preferences.addons['cycles'].preferences
     dev_type = '{mapped_cycles_device_type}'
@@ -892,47 +1117,28 @@ try:
 except Exception as e:
     print(f"Warning: Could not configure Cycles GPU preferences: {{e}}")
 
-# Resolution settings (800x600, custom scale)
 bpy.context.scene.render.resolution_x = 800
 bpy.context.scene.render.resolution_y = 600
 bpy.context.scene.render.resolution_percentage = {resolution_percentage_explode}
-
-# Frame rate: 30 fps
 bpy.context.scene.render.fps = 30
-
-# Output path: same path as blend file, media type: video (FFMPEG, container: MPEG4)
 bpy.context.scene.render.filepath = os.path.dirname(bpy.data.filepath) + "/"
 bpy.context.scene.render.image_settings.media_type = 'VIDEO'
 bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
 bpy.context.scene.render.ffmpeg.format = 'MPEG4'
 
-# Copy explode.py code into Scripting window (Text block) and execute it
 explode_py_path = {repr(explode_py_path)}
-print(f"Loading explode.py script from: {{explode_py_path}}")
 try:
     with open(explode_py_path, 'r', encoding='utf-8') as f:
         explode_code = f.read()
-    
-    # Create text block in blender
     text_block = bpy.data.texts.new(name="explode.py")
     text_block.from_string(explode_code)
-    
-    # Execute the text block code
-    print("Executing explode.py to generate timeline...")
     exec(compile(explode_code, 'explode.py', 'exec'), globals())
-    print("explode.py execution complete.")
 except Exception as e:
     print(f"Error executing explode.py: {{e}}")
     sys.exit(1)
 
-# Save the blend file
-print(f"Saving modified blend file to: {{bpy.data.filepath}}")
 bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath, relative_remap=False)
-
-# Render animation
-print("Starting animation render...")
 bpy.ops.render.render(animation=True)
-print("Animation render complete!")
 """
 
         try:
@@ -948,8 +1154,6 @@ print("Animation render complete!")
         
         def task():
             ret = self.run_command(cmd)
-            
-            # Clean up temp script
             if os.path.exists(temp_script_path):
                 try:
                     os.remove(temp_script_path)
@@ -978,7 +1182,6 @@ print("Animation render complete!")
             messagebox.showerror("Error", "No Blender file selected or found.")
             return
             
-        # Read Blender Path
         config = load_config()
         blender_exe = config.get("blender_exe", "blender")
                 
@@ -986,10 +1189,7 @@ print("Animation render complete!")
         self.log(f"Launching Blender GUI with: {os.path.basename(blend_file)}")
         
         try:
-            # Launch Blender GUI asynchronously without blocking the Tkinter event loop
-            import subprocess
             if os.name == 'nt':
-                # Detach on Windows using CREATE_NEW_CONSOLE
                 subprocess.Popen([blender_exe, blend_file], creationflags=subprocess.CREATE_NEW_CONSOLE)
             else:
                 subprocess.Popen([blender_exe, blend_file])
@@ -1018,7 +1218,10 @@ print("Animation render complete!")
             self.btn_explode.config(state="disabled")
             self.selected_blend_path.set("No blend file found")
 
+
 if __name__ == "__main__":
     root = tk.Tk()
+    root.configure(bg=COLORS["bg"])
+    setup_styles()
     app = AutoRenderApp(root)
     root.mainloop()
